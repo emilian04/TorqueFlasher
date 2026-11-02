@@ -1,0 +1,524 @@
+{
+ "_comment": "Derived from ReFlasher (strings, code and vector tables). Model names are labels; the model -> file mapping follows ReFlasher's file names. Values marked with '?' are assumptions.",
+ "drv": {
+  "flash_base": "0x08000000",
+  "bootloader_offset": "0x0",
+  "firmware_offset": "0x1000",
+  "openocd_target": "target/stm32f1x-nocpuid.cfg",
+  "uid_address": "0x1FFFF7E8",
+  "uid_length": 12,
+  "variants": {
+   "stm32": {
+    "openocd_dir": "bin",
+    "bootloader_suffix": ""
+   },
+   "gd32": {
+    "openocd_dir": "bin",
+    "bootloader_suffix": "_GD32",
+    "note": "GD32E: a halt error after the unlock call is normal (unlock_GD32E)"
+   },
+   "at32": {
+    "openocd_dir": "bin_at32",
+    "bootloader_suffix": "_AT32",
+    "note": "ReFlasher: bin_at32/openocd.exe + target/at32.cfg, same unlock/mass_erase commands as STM32",
+    "openocd_target": "target/at32.cfg"
+   }
+  },
+  "detect": {
+   "idcode_addr": "0xE0042000",
+   "cpuid_addr": "0xE000ED00",
+   "st_f1_devids": [
+    "0x410",
+    "0x412",
+    "0x414",
+    "0x418",
+    "0x420",
+    "0x428",
+    "0x430"
+   ],
+   "cpuid_stm32": "0x411FC231",
+   "cpuid_gd32": "0x412FC231",
+   "_comment": "Heuristic. Confirm values with logs from real chips.",
+   "known_ids": {
+    "0x700301C5": "AT32, Cortex-M4 r0p1 (confirmed on Ninebot F2 Pro II, E3)"
+   }
+  },
+  "flash_size_default": "0x20000"
+ },
+ "models": {
+  "ninebot": {
+   "bootloader_prefix": "nb",
+   "userdata_offset_drv": "0x1C000",
+   "items": {
+    "esx": {
+     "name": "Ninebot ES1/ES2/ES4 (ESx)",
+     "drv": "esx_DRV.bin",
+     "ble": "esx_BLE.bin",
+     "power": "3v3",
+     "chips": [
+      "stm32"
+     ],
+     "default_chip": "stm32",
+     "sn_placeholder": "N2GSD0000C0000"
+    },
+    "e": {
+     "name": "Ninebot E22/E25/E45 (E)",
+     "drv": "e_DRV.bin",
+     "ble": "e_BLE.bin",
+     "power": "3v3",
+     "chips": [
+      "stm32"
+     ],
+     "default_chip": "stm32",
+     "sn_placeholder": "N2GQD0000C0000"
+    },
+    "f20": {
+     "name": "Ninebot F20",
+     "drv": "f_DRV.bin",
+     "ble": "f_BLE.bin",
+     "power": "3v3",
+     "chips": [
+      "stm32",
+      "at32"
+     ],
+     "default_chip": "stm32",
+     "sn_placeholder": "N5GND0000C0000"
+    },
+    "f30": {
+     "name": "Ninebot F30",
+     "drv": "f_DRV.bin",
+     "ble": "f_BLE.bin",
+     "power": "3v3",
+     "chips": [
+      "stm32",
+      "at32"
+     ],
+     "default_chip": "stm32",
+     "sn_placeholder": "N5GQD0000C0000"
+    },
+    "f40": {
+     "name": "Ninebot F40",
+     "drv": "f_DRV.bin",
+     "ble": "f_BLE.bin",
+     "power": "3v3",
+     "chips": [
+      "stm32",
+      "at32"
+     ],
+     "default_chip": "stm32",
+     "sn_placeholder": "N5GVD0000C0000"
+    },
+    "d18": {
+     "name": "Ninebot D18",
+     "drv": "d18_DRV.bin",
+     "ble": "f_BLE.bin?",
+     "power": "3v3",
+     "chips": [
+      "stm32",
+      "at32"
+     ],
+     "default_chip": "stm32",
+     "sn_placeholder": "N8GWD0000C0000"
+    },
+    "d28": {
+     "name": "Ninebot D28",
+     "drv": "d28_DRV.bin",
+     "ble": "f_BLE.bin?",
+     "power": "3v3",
+     "chips": [
+      "stm32",
+      "at32"
+     ],
+     "default_chip": "stm32",
+     "sn_placeholder": "N8GGD0000C0000"
+    },
+    "d38": {
+     "name": "Ninebot D38",
+     "drv": "d38_DRV.bin",
+     "ble": "f_BLE.bin?",
+     "power": "3v3",
+     "chips": [
+      "stm32",
+      "at32"
+     ],
+     "default_chip": "stm32",
+     "sn_placeholder": "N8GKD0000C0000"
+    },
+    "g30": {
+     "name": "Ninebot Max G30",
+     "drv": "g30_DRV.bin",
+     "ble": "g30_BLE.bin",
+     "power": "5v",
+     "chips": [
+      "stm32",
+      "at32"
+     ],
+     "default_chip": "stm32",
+     "sn_placeholder": "N4GSD0000C0000"
+    },
+    "g2": {
+     "name": "Ninebot Max G2",
+     "drv": "g2_DRV.bin",
+     "ble": null,
+     "power": "5v",
+     "chips": [
+      "stm32",
+      "at32"
+     ],
+     "default_chip": "at32",
+     "sn_placeholder": "01GXD0000C0000",
+     "tested": "Flash ESC · AT32"
+    },
+    "f2": {
+     "name": "Ninebot F2 / Plus / Pro",
+     "drv": "g2_DRV.bin",
+     "ble": null,
+     "chips": [
+      "stm32",
+      "at32"
+     ],
+     "default_chip": "at32",
+     "power": "5v",
+     "gui_note": "ReFlasher flashes the F2 with the G2 files. ScooterHacking's WebFlasher uses separate, newer F2 files.",
+     "sn_placeholder": "NAGC0000000000",
+     "tested": "Flash ESC · AT32 (F2 Pro, F2 Pro II)"
+    },
+    "f2gd32": {
+     "name": "Ninebot F2 / Plus / Pro (GD32)",
+     "drv": "f2_gd32_DRV.bin",
+     "bootloader": "f2_gd32_BOOT.bin",
+     "variant": "gd32",
+     "userdata_offset": "0xF800",
+     "sn_locked": true,
+     "power": "5v",
+     "ble": null,
+     "gui_note": "Only for F2 controllers with a GD32 chip (special files from ScooterHacking). Always flashed as GD32. Set the serial number afterwards with ScooterHacking Utility; here only the mileage is entered.",
+     "after_note": "After reassembly, connect with ScooterHacking Utility (utility.cfw.sh): Tools -> Commands -> Change region -> Custom, and enter the serial number there.",
+     "chips": [
+      "gd32"
+     ],
+     "default_chip": "gd32",
+     "gd32e": true,
+     "sn_fixed": "26354/00000000",
+     "sn_format": "xiaomi"
+    },
+    "e2pro": {
+     "name": "Ninebot E2 Pro",
+     "drv": null,
+     "ble": null,
+     "power": "5v",
+     "bring_fw": true,
+     "default_fw": "32kmh.bin",
+     "chips": [
+      "stm32",
+      "at32"
+     ],
+     "default_chip": "at32",
+     "sn_placeholder": "N2AD00000P0000",
+     "gui_note": "Firmware 32kmh.bin by BastelPichi (included with permission). You can also choose another firmware file."
+    }
+   }
+  },
+  "xiaomi": {
+   "bootloader_prefix": "mi",
+   "userdata_offset_drv": "0xF800",
+   "items": {
+    "m365": {
+     "name": "Xiaomi M365",
+     "drv": "m365_DRV.bin",
+     "ble": "m365_BLE.bin",
+     "power": "3v3",
+     "chips": [
+      "stm32"
+     ],
+     "default_chip": "stm32",
+     "sn_placeholder": "16133/00000000"
+    },
+    "pro": {
+     "name": "Xiaomi Mi Pro",
+     "drv": "pro_DRV.bin",
+     "ble": "pro_BLE.bin",
+     "power": "3v3",
+     "chips": [
+      "stm32"
+     ],
+     "default_chip": "stm32",
+     "sn_placeholder": "21886/00000000"
+    },
+    "lite": {
+     "name": "Xiaomi Mi Lite / Essential",
+     "drv": "lite_DRV.bin",
+     "ble": "lite_BLE.bin",
+     "power": "3v3",
+     "chips": [
+      "stm32",
+      "gd32"
+     ],
+     "default_chip": "stm32",
+     "sn_placeholder": "25600/00000000"
+    },
+    "1s": {
+     "name": "Xiaomi Mi 1S",
+     "drv": "1s_DRV.bin",
+     "ble": "1s_BLE.bin",
+     "power": "3v3",
+     "chips": [
+      "stm32",
+      "gd32"
+     ],
+     "default_chip": "stm32",
+     "sn_placeholder": "25699/00000000"
+    },
+    "pro2": {
+     "name": "Xiaomi Mi Pro 2",
+     "drv": "pro2_DRV.bin",
+     "ble": "pro2_BLE.bin",
+     "power": "3v3",
+     "chips": [
+      "stm32",
+      "gd32"
+     ],
+     "default_chip": "stm32",
+     "sn_placeholder": "26354/00000000"
+    },
+    "mi3": {
+     "name": "Xiaomi Mi 3",
+     "drv": "mi3_DRV.bin",
+     "ble": "mi3_BLE.bin",
+     "power": "3v3",
+     "chips": [
+      "stm32",
+      "gd32"
+     ],
+     "default_chip": "stm32",
+     "sn_placeholder": "32124/00000000"
+    }
+   }
+  }
+ },
+ "serial_number": {
+  "length": 14,
+  "nb_regex": "^[A-Z0-9]{14}$",
+  "mi_regex": "^[0-9]{5}/[0-9]{8}$",
+  "default": "00000/000000000",
+  "_comment": "Like ReFlasher: Ninebot A-Z/0-9, Xiaomi 5 digits / 8 digits."
+ },
+ "_power_comment": "Always power the controller from the ST-Link only, battery disconnected. User-reported: G2, F2, E2 Pro and G30 take 5 V from the ST-Link at the controller's cable plug (GND + 5 V there), SWDIO + SWCLK at the back. E3/E3 Pro take 3.3 V at the back pad, although it is the same controller. All others: 3.3 V pad.",
+ "userdata": {
+  "_comment": "Page built like ReFlasher (verified: reproduces a real F40 dump byte for byte).",
+  "size": 1024,
+  "fixed": {
+   "0x00": 92,
+   "0x01": 81,
+   "0xEA": 2,
+   "0xF4": 2,
+   "0xF6": 1,
+   "0xFC": 3,
+   "0x1E2": 32
+  },
+  "activation": {
+   "offset": "0x3B",
+   "value": 8,
+   "_comment": "ReFlasher 'Activate ESC' (default: on)"
+  },
+  "sn": {
+   "offset": "0x20",
+   "length": 14
+  },
+  "mileage": {
+   "offset": "0x52",
+   "size": 4,
+   "unit": "meter = km*1000, int32 little endian"
+  },
+  "uid": {
+   "offset": "0x1B4",
+   "length": 12,
+   "_comment": "ReFlasher 'Copy CPUID' (default: on)"
+  }
+ },
+ "_webflasher_facts": {
+  "drv_flow": "Remove RDP, reset, read UID, one image: bootloader@0x0, firmware@0x1000, user data@0x1C000 (Ninebot) / 0xF800 (Xiaomi)",
+  "bootloader": {
+   "ninebot": "nb_DRV_AT32.bin if MCU=AT32 else nb_DRV.bin",
+   "xiaomi": "mi_DRV_GD32.bin if GD32 else mi_DRV.bin"
+  },
+  "ble_nrf51": {
+   "erase": "NVMC erase all",
+   "softdevice+bootloader": "nb_BLE.bin|mi_BLE.bin|mi_BLE_V2.bin @0x0",
+   "firmware": "0x18000 (V1) / 0x1B000 (V2: pro2,1s,lite,mi3)",
+   "uicr_0x10001014": "0x3C000 (V1) / 0x3D000 (V2)",
+   "bootsettings": "boot-16k @0x3C000 / boot-32k @0x3D000",
+   "name_page": {
+    "addr": "0x3B400 (V1) / 0x3B800 (V2)",
+    "bytes": "55 AA 00*6 + Name(13 Bytes ab Offset 8, Standard 'NBScooter0000'/'MIScooter0000')"
+   }
+  }
+ },
+ "ble": {
+  "_comment": "BLE module (nRF51822) via OpenOCD. Sequence like ReFlasher: nrf51 mass_erase, then program ... verify.",
+  "targets": {
+   "normal": "target/nrf51.cfg",
+   "fast": "target/nrf51-fast.cfg"
+  },
+  "uicr_address": "0x10001000",
+  "default_name": {
+   "ninebot": "NBScooter0000",
+   "xiaomi": "MIScooter0000"
+  },
+  "layouts": {
+   "v1": {
+    "bootloader": {
+     "ninebot": "nb_BLE.bin",
+     "xiaomi": "mi_BLE.bin"
+    },
+    "fw_addr": "0x18000",
+    "name_addr": "0x3B400",
+    "uicr": "UICR"
+   },
+   "v2": {
+    "bootloader": {
+     "xiaomi": "mi_BLE_V2.bin"
+    },
+    "fw_addr": "0x1B000",
+    "name_addr": "0x3B800",
+    "uicr": "UICR_32K"
+   }
+  },
+  "models": {
+   "ninebot": {
+    "g30": {
+     "name": "Ninebot Max (G30)",
+     "fw": "g30_BLE.bin"
+    },
+    "f": {
+     "name": "Ninebot F series",
+     "fw": "f_BLE.bin"
+    },
+    "esx": {
+     "name": "Ninebot ESx",
+     "fw": "esx_BLE.bin"
+    },
+    "e": {
+     "name": "Ninebot E series",
+     "fw": "e_BLE.bin"
+    }
+   },
+   "xiaomi": {
+    "m365": {
+     "name": "Xiaomi M365",
+     "fw": "m365_BLE.bin"
+    },
+    "pro": {
+     "name": "Xiaomi Pro",
+     "fw": "pro_BLE.bin"
+    },
+    "1s": {
+     "name": "Xiaomi 1S",
+     "fw": "1s_BLE.bin",
+     "v2": true
+    },
+    "lite": {
+     "name": "Xiaomi Mi Lite / Essential",
+     "fw": "lite_BLE.bin",
+     "v2": true
+    },
+    "pro2": {
+     "name": "Xiaomi Pro 2",
+     "fw": "pro2_BLE.bin",
+     "v2": true
+    },
+    "mi3": {
+     "name": "Xiaomi Mi 3",
+     "fw": "mi3_BLE.bin",
+     "v2": true
+    }
+   }
+  }
+ },
+ "_reflasher_facts": {
+  "chips": "Chip choice as in ReFlasher: Ninebot ESx, E: STM32 only; F20-F40, D18-D38, G30, G2: STM32/AT32 (G2 defaults to AT32); Xiaomi M365, Pro: STM32 only; Lite, 1S, Pro 2, Mi 3: STM32/GD32",
+  "gd32e": "Xiaomi+GD32: before every session 'init; reset halt' (error ignored); the session itself starts without the first 'reset halt'",
+  "no_ble": [
+   "g2",
+   "d18",
+   "d28",
+   "d38"
+  ],
+  "ble_name_header": "Default name (NBScooter0000/MIScooter0000) -> header 00 00, otherwise 55 AA"
+ },
+ "diagrams": {
+  "_comment": "Paths relative to the 'diagrams' folder from ReFlasher.",
+  "drv": {
+   "ninebot": {
+    "esx": "Ninebot/ESX_E-DRV.png",
+    "e": "Ninebot/ESX_E-DRV.png",
+    "f20": "Ninebot/F&D-Series-DRV.png",
+    "f30": "Ninebot/F&D-Series-DRV.png",
+    "f40": "Ninebot/F&D-Series-DRV.png",
+    "d18": "Ninebot/F&D-Series-DRV.png",
+    "d28": "Ninebot/F&D-Series-DRV.png",
+    "d38": "Ninebot/F&D-Series-DRV.png",
+    "g30": {
+     "default": "Ninebot/G30-DRV.png",
+     "at32": "Ninebot/G30_AT32-DRV.png"
+    },
+    "g2": "Ninebot/G2-F2-DRV.jpg",
+    "f2": "Ninebot/G2-F2-DRV.jpg",
+    "f2gd32": "Ninebot/G2-F2-DRV.jpg",
+    "e2pro": "Ninebot/G2-F2-DRV.jpg"
+   },
+   "xiaomi": {
+    "m365": "Xiaomi/M365_PRO-DRV.png",
+    "pro": "Xiaomi/M365_PRO-DRV.png",
+    "lite": "Xiaomi/LITE_1S_MI3_PRO2-DRV.png",
+    "1s": "Xiaomi/LITE_1S_MI3_PRO2-DRV.png",
+    "pro2": "Xiaomi/LITE_1S_MI3_PRO2-DRV.png",
+    "mi3": "Xiaomi/LITE_1S_MI3_PRO2-DRV.png"
+   }
+  },
+  "ble": {
+   "ninebot": {
+    "esx": "Ninebot/ESX_E-BLE.png",
+    "e": "Ninebot/ESX_E-BLE.png",
+    "f": "Ninebot/F&D-Series-BLE.png",
+    "g30": "Ninebot/G30-BLE.png"
+   },
+   "xiaomi": {
+    "pro": "Xiaomi/PRO-BLE.jpg",
+    "1s": "Xiaomi/LITE_1S_MI3_PRO2-BLE.png",
+    "lite": "Xiaomi/LITE_1S_MI3_PRO2-BLE.png",
+    "pro2": "Xiaomi/LITE_1S_MI3_PRO2-BLE.png",
+    "mi3": "Xiaomi/LITE_1S_MI3_PRO2-BLE.png",
+    "m365": "Xiaomi/M365-BLE.png"
+   }
+  }
+ },
+ "e3": {
+  "name": "Ninebot E3 / E3 Pro",
+  "mcu": "AT32 (Cortex-M4)",
+  "flash_size": "0x20000",
+  "layout": {
+   "bootloader": "0x0",
+   "app": "0x1000",
+   "userdata_pages": [
+    "0x1C000",
+    "0x1C400"
+   ],
+   "extra": "0x1F800"
+  },
+  "sn_offset": "0x20",
+  "power": "3v3-back",
+  "sn_region_letters": {
+   "_comment": "4th character of the SN (1TE?...), user-reported; EU, CN, APAC unknown",
+   "E3 Pro": {
+    "DE": "H",
+    "US": "F"
+   },
+   "E3": {
+    "DE": "C",
+    "US": "K"
+   }
+  },
+  "tested": "Backup, read SN, change SN"
+ }
+}

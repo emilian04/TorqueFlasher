@@ -1,0 +1,12 @@
+# Personal data - never commit (serial numbers, chip UIDs, mileage)
+dumps/
+e3_backups/
+logs/
+binaries/temp/
+
+# Python / build
+__pycache__/
+*.pyc
+build/
+dist/
+*.spec

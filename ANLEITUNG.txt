@@ -1,0 +1,45 @@
+TorqueFlasher 0.4.0 BETA - komplettes Paket
+===========================================
+
+Enthaelt TorqueFlasher mit den Dateien von ScooterHacking (binaries, diagrams, oocd, F2-GD32-Dateien;
+Erlaubnis von BX LR) und 32kmh.bin fuer den E2 Pro (Erlaubnis von BastelPichi).
+
+WINDOWS
+1. Python 3 von https://www.python.org installieren, "Add python.exe to PATH" anhaken.
+2. Ordner z. B. nach Dokumente entpacken (nicht nach C:\Programme).
+3. ReFlasher schliessen, Doppelklick auf start.bat.
+   Kommt kein Fenster: in der Adresszeile des Ordners "cmd" tippen, dann  py -3 gui.py
+
+LINUX
+1. ./setup_linux.sh   (OpenOCD, Tkinter, udev-Regeln)
+2. AT32-OpenOCD: ./build_openocd_at32.sh ausfuehren, oder deinen schon gebauten kopieren:
+   cp ../reflasher-ng/oocd/bin_at32/openocd oocd/bin_at32/
+3. ./start.sh
+
+NEU IN 0.4.0
+- Neues Design. Akzentfarbe in den Einstellungen (Zahnrad): Lime, Cyan, Violet, Pink, Mono.
+- Oben drei Karten: Scooter (anklicken zum Wechseln, "wiring" = Schaltbild), Chip, Countdown (- / +).
+- Chip: bei STM32/AT32-Modellen automatisch. "Check connection" erkennt den Chip und uebernimmt ihn.
+  "Flash ESC" prueft beim Start nochmal und bricht ab, wenn inzwischen ein anderer Controller dran ist.
+  Klappt die Erkennung nicht: auf der Chip-Karte "override" und den Chip von Hand waehlen.
+  Xiaomi-Modelle, die es auch mit GD32 gibt: Schalter STM32 / GD32 auf der Chip-Karte. Der Check
+  warnt, wenn der Chip anders aussieht als gewaehlt.
+- "Read user data" gibt es nicht mehr extra: "Check connection" liest bei entsperrtem Chip
+  Seriennummer, Kilometer und UID gleich mit (Datei in dumps/). Beim Flashen uebernimmt
+  "use check values" diese Werte.
+- Dry run oben in der Leiste an/aus.
+- Info-Seite (i-Knopf): Version, getestete Roller, "Report a test result", Credits.
+- E2 Pro: 32kmh.bin ist dabei, andere Firmware kann man ueber "choose..." waehlen.
+- Kleine Fenster: die Schrittliste klappt automatisch weg, wenn Platz fehlt.
+
+NOCH NICHT AN ECHTER HARDWARE GETESTET
+- automatische Chip-Erkennung und SN/km-Auslesen im Check
+- Zuruecklesen und Vergleichen nach dem ESC-Flashen
+- BLE-Flashen, Xiaomi, GD32, Windows allgemein
+Am besten zuerst mit Dry run durchklicken, dann an einem Roller testen, den du notfalls mit
+ReFlasher wiederherstellen kannst.
+
+VERSORGUNG: immer nur ueber den ST-Link, Akku abstecken.
+G2/F2/E2 Pro/G30: 5 V am Kabelstecker. E3/E3 Pro: 3,3 V am Pad hinten. Rest: 3,3-V-Pad.
+
+Bei Fehlern: in der Konsole rechts "copy" und den Text schicken.
