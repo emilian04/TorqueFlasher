@@ -1,0 +1,68 @@
+name: Test report
+description: Tell us how TorqueFlasher worked on your scooter (worked or not, both help).
+title: "[Test] <scooter> · <action> · <worked / failed>"
+labels: ["test report"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for testing! Please remove serial numbers, chip UIDs and mileage from logs before posting.
+  - type: input
+    id: version
+    attributes:
+      label: TorqueFlasher version
+      description: Shown in the top bar and on the Info page, e.g. 0.4.0 beta
+    validations:
+      required: true
+  - type: input
+    id: scooter
+    attributes:
+      label: Scooter model
+      placeholder: e.g. Ninebot Max G30, Xiaomi Mi Pro 2
+    validations:
+      required: true
+  - type: dropdown
+    id: chip
+    attributes:
+      label: Chip
+      options: [STM32, AT32, GD32, not sure]
+    validations:
+      required: true
+  - type: dropdown
+    id: action
+    attributes:
+      label: Action
+      multiple: true
+      options: [Check connection, Flash ESC, BLE check, BLE flash, E3 check, E3 read SN, E3 backup, E3 change SN, E3 restore]
+    validations:
+      required: true
+  - type: dropdown
+    id: result
+    attributes:
+      label: Result
+      options: [Worked, Failed, Worked with problems]
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options: [Windows 10, Windows 11, Linux, other]
+    validations:
+      required: true
+  - type: input
+    id: stlink
+    attributes:
+      label: ST-Link
+      placeholder: e.g. ST-Link V2 clone, V2J37S7
+  - type: textarea
+    id: log
+    attributes:
+      label: Console log
+      description: Console → copy, or the file from logs/. Remove serial numbers and UIDs.
+      render: text
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes
+      description: Anything else, e.g. how the scooter behaved afterwards.

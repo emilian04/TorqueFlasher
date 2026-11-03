@@ -54,120 +54,120 @@
      "name": "Ninebot ES1/ES2/ES4 (ESx)",
      "drv": "esx_DRV.bin",
      "ble": "esx_BLE.bin",
-     "power": "3v3",
      "chips": [
       "stm32"
      ],
      "default_chip": "stm32",
-     "sn_placeholder": "N2GSD0000C0000"
+     "sn_placeholder": "N2GSD0000C0000",
+     "short": "ES1 / ES2 / ES4"
     },
     "e": {
      "name": "Ninebot E22/E25/E45 (E)",
      "drv": "e_DRV.bin",
      "ble": "e_BLE.bin",
-     "power": "3v3",
      "chips": [
       "stm32"
      ],
      "default_chip": "stm32",
-     "sn_placeholder": "N2GQD0000C0000"
+     "sn_placeholder": "N2GQD0000C0000",
+     "short": "E22 / E25 / E45"
     },
     "f20": {
      "name": "Ninebot F20",
      "drv": "f_DRV.bin",
      "ble": "f_BLE.bin",
-     "power": "3v3",
      "chips": [
       "stm32",
       "at32"
      ],
      "default_chip": "stm32",
-     "sn_placeholder": "N5GND0000C0000"
+     "sn_placeholder": "N5GND0000C0000",
+     "short": "F20"
     },
     "f30": {
      "name": "Ninebot F30",
      "drv": "f_DRV.bin",
      "ble": "f_BLE.bin",
-     "power": "3v3",
      "chips": [
       "stm32",
       "at32"
      ],
      "default_chip": "stm32",
-     "sn_placeholder": "N5GQD0000C0000"
+     "sn_placeholder": "N5GQD0000C0000",
+     "short": "F30"
     },
     "f40": {
      "name": "Ninebot F40",
      "drv": "f_DRV.bin",
      "ble": "f_BLE.bin",
-     "power": "3v3",
      "chips": [
       "stm32",
       "at32"
      ],
      "default_chip": "stm32",
-     "sn_placeholder": "N5GVD0000C0000"
+     "sn_placeholder": "N5GVD0000C0000",
+     "short": "F40"
     },
     "d18": {
      "name": "Ninebot D18",
      "drv": "d18_DRV.bin",
      "ble": "f_BLE.bin?",
-     "power": "3v3",
      "chips": [
       "stm32",
       "at32"
      ],
      "default_chip": "stm32",
-     "sn_placeholder": "N8GWD0000C0000"
+     "sn_placeholder": "N8GWD0000C0000",
+     "short": "D18"
     },
     "d28": {
      "name": "Ninebot D28",
      "drv": "d28_DRV.bin",
      "ble": "f_BLE.bin?",
-     "power": "3v3",
      "chips": [
       "stm32",
       "at32"
      ],
      "default_chip": "stm32",
-     "sn_placeholder": "N8GGD0000C0000"
+     "sn_placeholder": "N8GGD0000C0000",
+     "short": "D28"
     },
     "d38": {
      "name": "Ninebot D38",
      "drv": "d38_DRV.bin",
      "ble": "f_BLE.bin?",
-     "power": "3v3",
      "chips": [
       "stm32",
       "at32"
      ],
      "default_chip": "stm32",
-     "sn_placeholder": "N8GKD0000C0000"
+     "sn_placeholder": "N8GKD0000C0000",
+     "short": "D38"
     },
     "g30": {
      "name": "Ninebot Max G30",
      "drv": "g30_DRV.bin",
      "ble": "g30_BLE.bin",
-     "power": "5v",
      "chips": [
       "stm32",
       "at32"
      ],
      "default_chip": "stm32",
-     "sn_placeholder": "N4GSD0000C0000"
+     "sn_placeholder": "N4GSD0000C0000",
+     "short": "Max G30"
     },
     "g2": {
      "name": "Ninebot Max G2",
      "drv": "g2_DRV.bin",
      "ble": null,
-     "power": "5v",
      "chips": [
       "stm32",
       "at32"
      ],
      "default_chip": "at32",
      "sn_placeholder": "01GXD0000C0000",
-     "tested": "Flash ESC · AT32"
+     "tested": "Flash ESC · AT32",
+     "short": "Max G2"
     },
     "f2": {
      "name": "Ninebot F2 / Plus / Pro",
@@ -178,10 +178,10 @@
       "at32"
      ],
      "default_chip": "at32",
-     "power": "5v",
      "gui_note": "ReFlasher flashes the F2 with the G2 files. ScooterHacking's WebFlasher uses separate, newer F2 files.",
      "sn_placeholder": "NAGC0000000000",
-     "tested": "Flash ESC · AT32 (F2 Pro, F2 Pro II)"
+     "tested": "Flash ESC · AT32 (F2 Pro, F2 Pro II)",
+     "short": "F2 / Plus / Pro"
     },
     "f2gd32": {
      "name": "Ninebot F2 / Plus / Pro (GD32)",
@@ -190,7 +190,6 @@
      "variant": "gd32",
      "userdata_offset": "0xF800",
      "sn_locked": true,
-     "power": "5v",
      "ble": null,
      "gui_note": "Only for F2 controllers with a GD32 chip (special files from ScooterHacking). Always flashed as GD32. Set the serial number afterwards with ScooterHacking Utility; here only the mileage is entered.",
      "after_note": "After reassembly, connect with ScooterHacking Utility (utility.cfw.sh): Tools -> Commands -> Change region -> Custom, and enter the serial number there.",
@@ -200,13 +199,13 @@
      "default_chip": "gd32",
      "gd32e": true,
      "sn_fixed": "26354/00000000",
-     "sn_format": "xiaomi"
+     "sn_format": "xiaomi",
+     "short": "F2 · GD32 chip"
     },
     "e2pro": {
      "name": "Ninebot E2 Pro",
      "drv": null,
      "ble": null,
-     "power": "5v",
      "bring_fw": true,
      "default_fw": "32kmh.bin",
      "chips": [
@@ -215,7 +214,8 @@
      ],
      "default_chip": "at32",
      "sn_placeholder": "N2AD00000P0000",
-     "gui_note": "Firmware 32kmh.bin by BastelPichi (included with permission). You can also choose another firmware file."
+     "gui_note": "Firmware 32kmh.bin: community firmware (author unnamed), included with BastelPichi's OK. You can also choose another firmware file.",
+     "short": "E2 Pro"
     }
    }
   },
@@ -227,71 +227,71 @@
      "name": "Xiaomi M365",
      "drv": "m365_DRV.bin",
      "ble": "m365_BLE.bin",
-     "power": "3v3",
      "chips": [
       "stm32"
      ],
      "default_chip": "stm32",
-     "sn_placeholder": "16133/00000000"
+     "sn_placeholder": "16133/00000000",
+     "short": "M365"
     },
     "pro": {
      "name": "Xiaomi Mi Pro",
      "drv": "pro_DRV.bin",
      "ble": "pro_BLE.bin",
-     "power": "3v3",
      "chips": [
       "stm32"
      ],
      "default_chip": "stm32",
-     "sn_placeholder": "21886/00000000"
+     "sn_placeholder": "21886/00000000",
+     "short": "Mi Pro"
     },
     "lite": {
      "name": "Xiaomi Mi Lite / Essential",
      "drv": "lite_DRV.bin",
      "ble": "lite_BLE.bin",
-     "power": "3v3",
      "chips": [
       "stm32",
       "gd32"
      ],
      "default_chip": "stm32",
-     "sn_placeholder": "25600/00000000"
+     "sn_placeholder": "25600/00000000",
+     "short": "Mi Lite / Essential"
     },
     "1s": {
      "name": "Xiaomi Mi 1S",
      "drv": "1s_DRV.bin",
      "ble": "1s_BLE.bin",
-     "power": "3v3",
      "chips": [
       "stm32",
       "gd32"
      ],
      "default_chip": "stm32",
-     "sn_placeholder": "25699/00000000"
+     "sn_placeholder": "25699/00000000",
+     "short": "Mi 1S"
     },
     "pro2": {
      "name": "Xiaomi Mi Pro 2",
      "drv": "pro2_DRV.bin",
      "ble": "pro2_BLE.bin",
-     "power": "3v3",
      "chips": [
       "stm32",
       "gd32"
      ],
      "default_chip": "stm32",
-     "sn_placeholder": "26354/00000000"
+     "sn_placeholder": "26354/00000000",
+     "short": "Mi Pro 2"
     },
     "mi3": {
      "name": "Xiaomi Mi 3",
      "drv": "mi3_DRV.bin",
      "ble": "mi3_BLE.bin",
-     "power": "3v3",
      "chips": [
       "stm32",
       "gd32"
      ],
      "default_chip": "stm32",
-     "sn_placeholder": "32124/00000000"
+     "sn_placeholder": "32124/00000000",
+     "short": "Mi 3"
     }
    }
   }
@@ -303,7 +303,6 @@
   "default": "00000/000000000",
   "_comment": "Like ReFlasher: Ninebot A-Z/0-9, Xiaomi 5 digits / 8 digits."
  },
- "_power_comment": "Always power the controller from the ST-Link only, battery disconnected. User-reported: G2, F2, E2 Pro and G30 take 5 V from the ST-Link at the controller's cable plug (GND + 5 V there), SWDIO + SWCLK at the back. E3/E3 Pro take 3.3 V at the back pad, although it is the same controller. All others: 3.3 V pad.",
  "userdata": {
   "_comment": "Page built like ReFlasher (verified: reproduces a real F40 dump byte for byte).",
   "size": 1024,
@@ -507,7 +506,6 @@
    "extra": "0x1F800"
   },
   "sn_offset": "0x20",
-  "power": "3v3-back",
   "sn_region_letters": {
    "_comment": "4th character of the SN (1TE?...), user-reported; EU, CN, APAC unknown",
    "E3 Pro": {
@@ -519,6 +517,74 @@
     "US": "K"
    }
   },
-  "tested": "Backup, read SN, change SN"
+  "tested": "Backup, read SN, change SN",
+  "short": "E3 / E3 Pro"
+ },
+ "picker_groups": {
+  "_comment": "Scooter picker: series in reading order; the first half goes into the left column.",
+  "ninebot": [
+   [
+    "ES / E series",
+    [
+     "esx",
+     "e"
+    ]
+   ],
+   [
+    "F series",
+    [
+     "f20",
+     "f30",
+     "f40"
+    ]
+   ],
+   [
+    "D series",
+    [
+     "d18",
+     "d28",
+     "d38"
+    ]
+   ],
+   [
+    "Max",
+    [
+     "g30",
+     "g2"
+    ]
+   ],
+   [
+    "F2",
+    [
+     "f2",
+     "f2gd32"
+    ]
+   ],
+   [
+    "E2 / E3",
+    [
+     "e2pro",
+     "e3"
+    ]
+   ]
+  ],
+  "xiaomi": [
+   [
+    "M365 / Pro",
+    [
+     "m365",
+     "pro"
+    ]
+   ],
+   [
+    "Lite · 1S · Pro 2 · Mi 3",
+    [
+     "lite",
+     "1s",
+     "pro2",
+     "mi3"
+    ]
+   ]
+  ]
  }
 }

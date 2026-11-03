@@ -1,0 +1,2 @@
+# Allow ST-Link V2 / V2-1 / V3 for the logged-in user (no sudo needed)
+SUBSYSTEM=="usb", ATTRS{idVendor}=="0483", ATTRS{idProduct}=="3748|374b|3752|374e|374f|3753|3754", MODE="0660", TAG+="uaccess"

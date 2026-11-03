@@ -1,0 +1,15 @@
+# Line endings: Windows batch files need CRLF, shell scripts LF.
+*.bat   text eol=crlf
+*.iss   text eol=crlf
+*.sh    text eol=lf
+AppRun  text eol=lf
+*.py    text eol=lf
+# Binary files
+*.bin   binary
+*.exe   binary
+*.dll   binary
+*.ico   binary
+*.png   binary
+*.jpg   binary
+binaries/UICR      binary
+binaries/UICR_32K  binary

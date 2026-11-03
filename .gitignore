@@ -2,11 +2,14 @@
 dumps/
 e3_backups/
 logs/
+temp/
 binaries/temp/
 
-# Python / build
+# Python / build output
 __pycache__/
 *.pyc
 build/
 dist/
-*.spec
+installer/windows/Output/
+installer/linux/AppDir/
+*.AppImage

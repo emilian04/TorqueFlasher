@@ -24,23 +24,71 @@ from pathlib import Path
 from typing import Callable
 
 APP_NAME = "TorqueFlasher"
-APP_VERSION = "0.4.0"
+APP_VERSION = "0.5.0"
 APP_STAGE = "BETA"
 REPO_URL = "https://github.com/emilian04/TorqueFlasher"
 TEST_REPORT_URL = REPO_URL + "/issues/new?template=test-report.yml"
 
 
+FROZEN = bool(getattr(sys, "frozen", False))  # PyInstaller build (Windows installer, AppImage)
+
+
 def _app_dir() -> Path:
-    """Folder with profiles.json, binaries, oocd... For a PyInstaller build: the folder of the EXE."""
-    if getattr(sys, "frozen", False):
-        return Path(sys.executable).resolve().parent
+    """Folder with profiles.json, binaries, oocd... (read-only is fine). PyInstaller build: its data folder."""
+    if FROZEN:
+        return Path(getattr(sys, "_MEIPASS", Path(sys.executable).resolve().parent))
     return Path(__file__).resolve().parent
 
 
 ROOT = _app_dir()
 PROFILES = json.loads((ROOT / "profiles.json").read_text(encoding="utf-8"))
-LOGS = ROOT / "logs"
-TEMP = ROOT / "binaries" / "temp"
+INSTALL_CONFIG = "torqueflasher-install.json"   # written by the Windows installer next to TorqueFlasher.exe
+
+
+def config_dir() -> Path:
+    """settings.json lives here: %APPDATA%\\torqueflasher or ~/.config/torqueflasher."""
+    base = os.environ.get("APPDATA") if os.name == "nt" else \
+        (os.environ.get("XDG_CONFIG_HOME") or str(Path.home() / ".config"))
+    return Path(base or Path.home()) / "torqueflasher"
+
+
+def _read_json(path: Path) -> dict:
+    try:
+        data = json.loads(Path(path).read_text(encoding="utf-8-sig"))  # the installer may write a BOM
+        return data if isinstance(data, dict) else {}
+    except Exception:  # noqa
+        return {}
+
+
+def default_data_dir() -> Path:
+    """Run from source: the program folder, as before. Installed: Documents/TorqueFlasher (Windows) or
+    ~/TorqueFlasher (Linux, macOS)."""
+    if not FROZEN and os.access(ROOT, os.W_OK):
+        return ROOT
+    if os.name == "nt":
+        return Path.home() / "Documents" / "TorqueFlasher"
+    return Path.home() / "TorqueFlasher"
+
+
+def resolve_data_dir() -> Path:
+    """Folder for dumps, E3 backups, logs and temporary files. First match wins: TORQUEFLASHER_DATA, the folder
+    chosen in Settings, the folder chosen in the Windows installer, the default."""
+    install = _read_json(Path(sys.executable).resolve().parent / INSTALL_CONFIG) if FROZEN else {}
+    for value in (os.environ.get("TORQUEFLASHER_DATA"), _read_json(config_dir() / "settings.json").get("data_dir"),
+                  install.get("data_dir")):
+        if value:
+            return Path(value).expanduser()
+    return default_data_dir()
+
+
+def set_data_dir(path) -> None:
+    global DATA, LOGS, TEMP, DUMPS
+    DATA = Path(path)
+    LOGS, TEMP, DUMPS = DATA / "logs", DATA / "temp", DATA / "dumps"
+
+
+DATA = LOGS = TEMP = DUMPS = Path()
+set_data_dir(resolve_data_dir())
 
 RAW_SINK: Callable[[str], None] | None = None
 
@@ -157,8 +205,8 @@ POWER_HINT = "Power the board from the ST-Link only, with the scooter battery di
 def connection_error(text: str, what="the chip") -> str | None:
     """Common OpenOCD failure texts -> a readable message, or None."""
     if "LIBUSB_ERROR_ACCESS" in text:
-        return ("ST-Link found, but no permission to use it (Linux: run setup_linux.sh for the udev rules, "
-                "then re-plug the ST-Link)")
+        return ("ST-Link found, but no permission to use it (Linux: 'Set up ST-Link access' below, or "
+                "setup_linux.sh; then re-plug the ST-Link)")
     if "open failed" in text:
         return "No ST-Link found (check the USB cable and driver; close ReFlasher or other tools)"
     if "init mode failed" in text or "unable to connect" in text:
@@ -382,7 +430,7 @@ def check_drv(brand: str, model: str, variant: str, *, read_userdata=True, dry_r
     if not read_userdata:
         pass
     elif info.get("rdp") == "off":
-        out_path = ROOT / "dumps" / f"userdata_{model}_{datetime.datetime.now():%Y%m%d-%H%M%S}.bin"
+        out_path = DUMPS / f"userdata_{model}_{datetime.datetime.now():%Y%m%d-%H%M%S}.bin"
         try:
             info["userdata"] = dump_userdata(brand, variant, str(out_path), log=log, model=model)
         except RuntimeError as e:  # the check itself succeeded; reading the page is a bonus

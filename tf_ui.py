@@ -7,6 +7,7 @@ from __future__ import annotations
 import os
 import pathlib
 import platform
+import shutil
 import subprocess
 import tkinter as tk
 import tkinter.font as tkfont
@@ -112,6 +113,72 @@ def fit(font: tkfont.Font, text: str, width: int) -> str:
     return text.rstrip() + "…"
 
 
+def _dwm_dark(win):
+    import ctypes
+    hwnd = ctypes.windll.user32.GetParent(win.winfo_id())
+    dwm = ctypes.windll.dwmapi
+    on = ctypes.c_int(1)
+    for attr in (20, 19):  # DWMWA_USE_IMMERSIVE_DARK_MODE (19 before Windows 10 20H1)
+        if dwm.DwmSetWindowAttribute(hwnd, attr, ctypes.byref(on), ctypes.sizeof(on)) == 0:
+            break
+    for attr, color in ((35, BG), (34, LINE2), (36, TXT)):  # caption, border, text color: Windows 11 only
+        r, g, b = (int(color[i:i + 2], 16) for i in (1, 3, 5))
+        c = ctypes.c_int(r | g << 8 | b << 16)
+        dwm.DwmSetWindowAttribute(hwnd, attr, ctypes.byref(c), ctypes.sizeof(c))
+    # repaint the frame now: SWP_NOSIZE | SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED
+    ctypes.windll.user32.SetWindowPos(hwnd, 0, 0, 0, 0, 0, 0x1 | 0x2 | 0x4 | 0x10 | 0x20)
+
+
+def dark_titlebar(win):
+    """Dark window title bar. Windows 11: the app background color; Windows 10 (1809+): the dark system variant;
+    Linux/X11: asks GNOME (Mutter) for the dark decoration, needs xprop; KDE and others follow the system theme.
+    Call it right after creating the window. Does nothing where none of this is available."""
+    try:
+        if platform.system() == "Windows":
+            def on_map(e):  # the native frame exists once the window is mapped
+                if e.widget is win and not getattr(win, "_tf_dark", False):
+                    win._tf_dark = True
+                    try:
+                        _dwm_dark(win)
+                    except Exception:  # noqa
+                        pass
+            win.bind("<Map>", on_map, add="+")
+            if win.winfo_ismapped():
+                on_map(type("E", (), {"widget": win})())
+        elif win.tk.call("tk", "windowingsystem") == "x11" and shutil.which("xprop"):
+            # before the window is mapped, 'wm frame' is the toplevel window the window manager will decorate
+            subprocess.Popen(["xprop", "-id", win.wm_frame(), "-f", "_GTK_THEME_VARIANT", "8u", "-set",
+                              "_GTK_THEME_VARIANT", "dark"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except Exception:  # noqa - purely cosmetic
+        pass
+
+
+def icon_dir(assets: pathlib.Path, accent: str | None = None) -> pathlib.Path:
+    """Folder with the icon files in the given accent color (assets/accents/<name>), else the default ones."""
+    d = assets / "accents" / (accent or "")
+    return d if accent and (d / "icon-32.png").exists() else assets
+
+
+def set_window_icon(win, assets: pathlib.Path, accent: str | None = None):
+    """App icon for the window, the taskbar and all dialogs, in the accent color (icon-*.png; on Windows also
+    icon.ico). The icon of the .exe / AppImage file itself is fixed when it is built."""
+    d = icon_dir(assets, accent)
+    if platform.system() == "Windows" and (d / "icon.ico").exists():
+        try:  # classic .ico (BMP entries); the PNG icon below is set last and wins where both work
+            win.iconbitmap(default=str(d / "icon.ico"))
+        except Exception:  # noqa
+            pass
+    try:
+        imgs = [tk.PhotoImage(master=win, file=str(d / f"icon-{s}.png")) for s in (256, 64, 32, 16)
+                if (d / f"icon-{s}.png").exists()]
+        if imgs:
+            win.iconphoto(True, *imgs)
+            win._icon_imgs = imgs
+        return bool(imgs)
+    except Exception:  # noqa
+        return False
+
+
 def bind_all_children(widget, seq, fn):
     widget.bind(seq, fn, add="+")
     for ch in widget.winfo_children():
@@ -159,6 +226,8 @@ class Fonts:
         self.mono_s = F(root, family=mono, size=8)
         self.mono_l = F(root, family=mono, size=17, weight="bold")
         self.icon = F(root, family=ui, size=13)
+        self.chip = F(root, family=ui, size=11, weight="bold")
+        self.search = F(root, family=ui, size=11)
 
 
 def eyebrow(parent, text, fonts: Fonts, bg, fg=MUT):
@@ -234,7 +303,7 @@ class Button(tk.Canvas):
         if w < 8:
             w = self._width()
         fill, outline, fg = self._colors()
-        round_rect(self, 1, 1, w - 1, self.h - 1, 9 if self.h > 34 else 7, fill=fill, outline=outline)
+        round_rect(self, 1, 1, w - 1, self.h - 1, (self.h - 2) / 2, fill=fill, outline=outline)
         self.create_text(w / 2, self.h / 2, text=fit(self.f, self.text, w - 16), fill=fg, font=self.f)
 
 
@@ -257,11 +326,11 @@ class Badge(tk.Canvas):
         self.configure(width=w)
         bg = self["bg"]
         if filled:
-            round_rect(self, 1, 1, w - 1, 23, 7, fill=color, outline=color)
+            round_rect(self, 1, 1, w - 1, 23, 11, fill=color, outline=color)
             self.create_oval(11, 9, 17, 15, fill=INK, outline="")
             self.create_text(23, 12, text=text, fill=INK, font=self.f, anchor="w")
         else:
-            round_rect(self, 1, 1, w - 1, 23, 7, fill=mix(color, bg, 0.88), outline=mix(color, bg, 0.5))
+            round_rect(self, 1, 1, w - 1, 23, 11, fill=mix(color, bg, 0.88), outline=mix(color, bg, 0.5))
             self.create_oval(11, 9, 17, 15, fill=color, outline="")
             self.create_text(23, 12, text=text, fill=color, font=self.f, anchor="w")
 
@@ -313,16 +382,38 @@ class Tooltip:
             self.tip = None
 
 
-class IconButton(tk.Label):
-    def __init__(self, parent, text, command, fonts: Fonts, bg, tooltip=""):
-        super().__init__(parent, text=text, bg=bg, fg=DIM, font=fonts.icon, cursor="hand2", padx=8, pady=1,
-                         highlightthickness=1, highlightbackground=LINE2)
-        self.bg0 = bg
+class IconButton(tk.Canvas):
+    """Round icon button (⚙, ⓘ)."""
+
+    def __init__(self, parent, text, command, fonts: Fonts, bg, tooltip="", size=34):
+        super().__init__(parent, width=size, height=size, bg=bg, highlightthickness=0, bd=0, cursor="hand2")
+        self.text, self.f, self.size, self.hover = text, fonts.icon, size, False
         self.bind("<Button-1>", lambda e: command())
-        self.bind("<Enter>", lambda e: self.configure(fg=TXT, bg=ELEV), add="+")
-        self.bind("<Leave>", lambda e: self.configure(fg=DIM, bg=self.bg0), add="+")
+        self.bind("<Enter>", lambda e: self._h(True), add="+")
+        self.bind("<Leave>", lambda e: self._h(False), add="+")
         if tooltip:
             Tooltip(self, tooltip, fonts.small)
+        self.draw()
+
+    def _h(self, v):
+        self.hover = v
+        self.draw()
+
+    def draw(self):
+        self.delete("all")
+        s = self.size
+        self.create_oval(1, 1, s - 1, s - 1, fill=ELEV if self.hover else self["bg"], outline=LINE2)
+        self.create_text(s / 2, s / 2, text=self.text, fill=TXT if self.hover else DIM, font=self.f)
+
+
+class Pill(tk.Canvas):
+    """Static pill-shaped label, e.g. the version tag."""
+
+    def __init__(self, parent, text, font, bg, fg=MUT, outline=LINE2, fill=None, padx=10, height=22):
+        w = font.measure(text) + 2 * padx
+        super().__init__(parent, width=w, height=height, bg=bg, highlightthickness=0, bd=0)
+        round_rect(self, 1, 1, w - 1, height - 1, (height - 2) / 2, fill=fill or bg, outline=outline)
+        self.create_text(w / 2, height / 2, text=text, fill=fg, font=font)
 
 
 class Toggle(tk.Frame):
@@ -365,17 +456,62 @@ class Toggle(tk.Frame):
         c.create_oval(x - 6, 4, x + 6, 16, fill=T.ACCENT_FG if on else DIM, outline="")
 
 
-def entry(parent, var, fonts: Fonts, width=16, mono=True, bg=BG):
-    return tk.Entry(parent, textvariable=var, width=width, bg=bg, fg=TXT, insertbackground=TXT, relief="flat",
-                    font=fonts.mono_m if mono else fonts.body, highlightthickness=1, highlightbackground=LINE2,
-                    highlightcolor=T.ACCENT, disabledbackground=PANEL2, disabledforeground=MUT)
+def entry(parent, var, fonts: Fonts, width=16, mono=True, bg=BG, font=None):
+    """Borderless entry; put it into a RoundField for the rounded frame."""
+    return tk.Entry(parent, textvariable=var, width=width, bg=bg, fg=TXT, insertbackground=T.ACCENT, relief="flat",
+                    bd=0, font=font or (fonts.mono_m if mono else fonts.body), highlightthickness=0,
+                    disabledbackground=bg, disabledforeground=MUT)
+
+
+class RoundField(tk.Canvas):
+    """Rounded frame around one child widget (Entry, Listbox, Label). make(parent) creates the child. Without a
+    height the field is as tall as the child. The border turns accent-colored while the child has the focus."""
+
+    def __init__(self, parent, make, bg=PANEL, fill=BG, height=None, radius=None, padx=12, pady=7, width=None):
+        super().__init__(parent, bg=bg, highlightthickness=0, bd=0, height=height or 10, width=width or 10)
+        self.fill, self.padx, self.pady, self.fixed_h = fill, padx, pady, height
+        self.child = make(self)
+        if not width:  # natural width; fill/sticky can still stretch it
+            self.configure(width=self.child.winfo_reqwidth() + 2 * padx)
+        self.radius = radius
+        self.border, self.focus = LINE2, False
+        self.win = self.create_window(padx, pady, window=self.child, anchor="nw")
+        self.bind("<Configure>", self._layout)
+        self.child.bind("<Configure>", self._layout, add="+")
+        self.child.bind("<FocusIn>", lambda e: self._focus(True), add="+")
+        self.child.bind("<FocusOut>", lambda e: self._focus(False), add="+")
+        self.bind("<Button-1>", lambda e: self.child.focus_set())
+
+    def _focus(self, v):
+        self.focus = v
+        self._layout()
+
+    def set_border(self, color):
+        self.border = color
+        self._layout()
+
+    def _layout(self, _e=None):
+        if not self.fixed_h:
+            want = self.child.winfo_reqheight() + 2 * self.pady
+            if want != int(self["height"]):
+                self.configure(height=want)
+        w, h = self.winfo_width(), max(self.winfo_height(), int(self["height"]))
+        if w > 2 * self.padx:
+            self.itemconfigure(self.win, width=w - 2 * self.padx)
+        if self.fixed_h:
+            self.itemconfigure(self.win, height=h - 2 * self.pady)
+        self.delete("bg")
+        r = self.radius if self.radius is not None else min(14, h / 2)
+        line = T.ACCENT if self.focus else self.border
+        round_rect(self, 1, 1, w - 2, h - 2, r, fill=self.fill, outline=line, tags="bg")
+        self.tag_lower("bg")
 
 
 # ----------------------------------------------------------------------------------------------- panels
 class Card(tk.Canvas):
     """Rounded box whose height follows its content. Put children into .inner."""
 
-    def __init__(self, parent, outer_bg, fill=PANEL, outline=LINE2, radius=12, padx=18, pady=14):
+    def __init__(self, parent, outer_bg, fill=PANEL, outline=LINE2, radius=18, padx=18, pady=14):
         super().__init__(parent, bg=outer_bg, highlightthickness=0, bd=0, height=2 * pady + 10)
         self.fill, self.outline, self.radius, self.padx, self.pady = fill, outline, radius, padx, pady
         self.inner = tk.Frame(self, bg=fill)
@@ -399,7 +535,7 @@ class Card(tk.Canvas):
 class FillPanel(tk.Canvas):
     """Rounded box that fills the space it gets; .inner fills the box minus the padding."""
 
-    def __init__(self, parent, outer_bg, fill=PANEL, outline=LINE2, radius=12, pad=1):
+    def __init__(self, parent, outer_bg, fill=PANEL, outline=LINE2, radius=18, pad=1):
         super().__init__(parent, bg=outer_bg, highlightthickness=0, bd=0)
         self.fill, self.outline, self.radius, self.pad = fill, outline, radius, pad
         self.inner = tk.Frame(self, bg=fill)
@@ -418,7 +554,7 @@ class RoundPanel(tk.Canvas):
     """Rounded card that fills its space. Children go into .inner. Content starts at the top (valign='top') or is
     centered; when it is taller than the card it scrolls with the mouse wheel and a thin thumb shows the position."""
 
-    def __init__(self, parent, outer_bg, fill=PANEL, outline=LINE2, radius=12, pad=18, valign="top"):
+    def __init__(self, parent, outer_bg, fill=PANEL, outline=LINE2, radius=18, pad=18, valign="top"):
         super().__init__(parent, bg=outer_bg, highlightthickness=0, bd=0)
         self.fill, self.outline, self.radius, self.pad, self.valign = fill, outline, radius, pad, valign
         self.offset = 0
@@ -502,7 +638,7 @@ class Tabs(tk.Canvas):
         self.items, self.sel, self.locked = items, selected, locked
         self.xs, x = [], 0
         for _id, label, _en, _tip in items:
-            w = self.f.measure(label.upper()) + 2 * self.pad
+            w = self.f.measure(label.upper()) + 2 * self.pad + 4
             self.xs.append((x, x + w))
             x += w
         self.configure(width=x + 2)
@@ -543,14 +679,14 @@ class Tabs(tk.Canvas):
             return
         bg, h = self["bg"], self.h
         total = self.xs[-1][1]
-        round_rect(self, 1, 1, total, h - 1, 10, fill=PANEL, outline=LINE2)
+        round_rect(self, 1, 1, total, h - 1, (h - 2) / 2, fill=PANEL, outline=LINE2)
         for i, ((a, b), (_id, label, enabled, _tip)) in enumerate(zip(self.xs, self.items)):
             sel = _id == self.sel
             if sel:
-                round_rect(self, a + 4, 4, b - 3, h - 4, 7, fill=T.ACCENT if not self.locked else mix(
+                round_rect(self, a + 4, 4, b - 3, h - 4, (h - 8) / 2, fill=T.ACCENT if not self.locked else mix(
                     T.ACCENT, PANEL, 0.35), outline="")
             elif self.hover == i and enabled and not self.locked:
-                round_rect(self, a + 4, 4, b - 3, h - 4, 7, fill=ELEV, outline="")
+                round_rect(self, a + 4, 4, b - 3, h - 4, (h - 8) / 2, fill=ELEV, outline="")
             elif i > 0 and self.items[i - 1][0] != self.sel and self.hover != i - 1:
                 self.create_line(a, 12, a, h - 12, fill=LINE2)
             fg = T.ACCENT_FG if sel else (DIM if enabled else mix(MUT, PANEL, 0.35))
@@ -594,7 +730,7 @@ class Steps(tk.Canvas):
                 "todo": (self["bg"], LINE2, MUT, DIM if self.mode == "idle" else MUT),
             }[state]
             cy = y + R / 2
-            round_rect(self, 1, cy - 9, 19, cy + 9, 5, fill=box_fill, outline=box_line)
+            self.create_oval(1, cy - 9, 19, cy + 9, fill=box_fill, outline=box_line)
             mark = "✓" if state == "done" else "✕" if state == "fail" else str(n)
             self.create_text(10, cy, text=mark, fill=num_fg, font=self.fn)
             self.create_text(30, cy, text=fit(self.f, label, w - 34), anchor="w", fill=txt,
@@ -675,7 +811,7 @@ class RadioCard(tk.Canvas):
         sel = self.var.get() == self.value
         fill = T.ACCENT_BG if sel else (ELEV if self.hover else PANEL2)
         w, h = self.w, self.h
-        round_rect(self, 1, 1, w - 1, h - 1, 9, fill=fill, outline=T.ACCENT if sel else LINE2)
+        round_rect(self, 1, 1, w - 1, h - 1, 14, fill=fill, outline=T.ACCENT if sel else LINE2)
         cy = h / 2
         self.create_oval(12, cy - 7, 26, cy + 7, outline=T.ACCENT if sel else MUT, width=2)
         if sel:
@@ -690,6 +826,85 @@ class RadioCard(tk.Canvas):
                              fill=DIM)
         if self.tag:
             self.create_text(w - 10, ty, text=self.tag, anchor="e", font=f.eyebrow, fill=self.tag_color)
+
+
+class Chip(tk.Canvas):
+    """Pill-like model button for the scooter picker. match=(start, end) colors that part of the text;
+    sub: dim text after the name; dot: green 'tested' dot; state: normal | selected | focus."""
+    H = 44
+
+    def __init__(self, parent, fonts: Fonts, text, command, bg=PANEL, sub=None, match=None, dot=False,
+                 state="normal", small=False, min_w=110, on_double=None):
+        self.f, self.fs = (fonts.body_b if small else fonts.chip), fonts.small
+        self.text, self.sub, self.match, self.dot, self.state, self.small = text, sub, match, dot, state, small
+        self.h = 32 if small else self.H
+        pad = 14 if small else 18
+        w = self.f.measure(text) + 2 * pad + (self.fs.measure(sub) + 8 if sub else 0) + (8 if dot else 0)
+        self.w = max(w, 0 if small else min_w)
+        self.pad, self.hover = pad, False
+        super().__init__(parent, width=self.w, height=self.h, bg=bg, highlightthickness=0, bd=0, cursor="hand2")
+        self.bind("<Enter>", lambda e: self._h(True))
+        self.bind("<Leave>", lambda e: self._h(False))
+        self.bind("<Button-1>", lambda e: command())
+        if on_double:
+            self.bind("<Double-Button-1>", lambda e: on_double())
+        self.draw()
+
+    def _h(self, v):
+        self.hover = v
+        self.draw()
+
+    def set_state(self, state):
+        self.state = state
+        self.draw()
+
+    def draw(self):
+        self.delete("all")
+        w, h = self.w, self.h
+        if self.state == "selected":
+            fill, line = T.ACCENT_BG, T.ACCENT
+        elif self.state == "focus":
+            fill, line = ELEV, "#55555E"
+        else:
+            fill, line = (ELEV if self.hover else PANEL2), LINE2
+        round_rect(self, 1, 1, w - 1, h - 1, 16 if not self.small else (h - 2) / 2, fill=fill, outline=line)
+        x, cy = self.pad, h / 2
+        if self.match:
+            a, b = self.match
+            for part, col in ((self.text[:a], TXT), (self.text[a:b], T.ACCENT), (self.text[b:], TXT)):
+                if part:
+                    self.create_text(x, cy, text=part, anchor="w", fill=col, font=self.f)
+                    x += self.f.measure(part)
+        else:
+            self.create_text(x, cy, text=self.text, anchor="w", fill=TXT, font=self.f)
+            x += self.f.measure(self.text)
+        if self.sub:
+            self.create_text(x + 8, cy + 1, text=self.sub, anchor="w", fill=MUT, font=self.fs)
+        if self.dot:
+            self.create_oval(w - 15, 7, w - 8, 14, fill=OK, outline="")
+        if self.state == "selected" and not self.small:
+            self.create_text(w - 12, h - 11, text="✓", fill=T.ACCENT, font=self.fs)
+
+
+def flow(parent, makers, width, gap=8, bg=PANEL):
+    """Places widgets left to right and wraps at width. makers: functions row_frame -> widget (with a width)."""
+    out, row, used = [], None, 0
+    for make in makers:
+        if row is None:
+            row = tk.Frame(parent, bg=bg)
+            row.pack(anchor="w")
+        w = make(row)
+        need = int(w["width"])
+        if used and used + gap + need > width:
+            w.destroy()
+            row = tk.Frame(parent, bg=bg)
+            row.pack(anchor="w", pady=(gap, 0))
+            used = 0
+            w = make(row)
+        w.pack(side="left", padx=(gap if used else 0, 0))
+        used += (gap if used else 0) + need
+        out.append(w)
+    return out
 
 
 # ----------------------------------------------------------------------------------------------- dialogs
@@ -708,6 +923,7 @@ class Dialog(tk.Toplevel):
         self.app, self.result = app, None
         self.title(title)
         self.configure(bg=PANEL, highlightthickness=1, highlightbackground=LINE2)
+        dark_titlebar(self)
         self.resizable(False, False)
         self.transient(app)
         body = tk.Frame(self, bg=PANEL, padx=26, pady=22)
@@ -721,10 +937,8 @@ class Dialog(tk.Toplevel):
         tk.Label(body, text=message, bg=PANEL, fg=DIM, font=app.f.body, justify="left", wraplength=460).pack(
             anchor="w", pady=(12, 0))
         if detail:
-            box = tk.Frame(body, bg=BG, highlightthickness=1, highlightbackground=LINE2)
-            box.pack(fill="x", pady=(12, 0))
-            tk.Label(box, text=detail, bg=BG, fg=TXT, font=app.f.mono, justify="left", padx=12, pady=10).pack(
-                anchor="w")
+            RoundField(body, lambda p: tk.Label(p, text=detail, bg=BG, fg=TXT, font=app.f.mono, justify="left",
+                                                anchor="w"), pady=10).pack(fill="x", pady=(12, 0))
         row = tk.Frame(body, bg=PANEL)
         row.pack(fill="x", pady=(20, 0))
         for label, kind, value in reversed(buttons):

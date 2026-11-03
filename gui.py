@@ -13,6 +13,9 @@ import os
 import pathlib
 import platform
 import queue
+import re
+import shutil
+import subprocess
 import threading
 import time
 import traceback
@@ -25,22 +28,17 @@ import e3tool
 import tf_ui
 from countdown import Countdown
 from tf_ui import (AMBER, BG, CONSOLE_BG, DANGER, DIM, ELEV, INK, LINE, LINE2, MUT, OK, PANEL, PANEL2, STATUS_BG,
-                   TXT, Badge, Button, Card, Dialog, FillPanel, Fonts, IconButton, Led, Link, ProgressBar, RadioCard,
-                   RoundPanel, Steps, Swatches, T, Tabs, Toggle, bind_all_children, center_on, elapsed, ensure_dir,
-                   entry, eyebrow, fit, mix, open_path, short, tail)
+                   TXT, Badge, Button, Card, Chip, Dialog, FillPanel, Fonts, IconButton, Led, Link, Pill, ProgressBar,
+                   RadioCard, RoundField, RoundPanel, Steps, Swatches, T, Tabs, Toggle, bind_all_children, center_on,
+                   dark_titlebar, elapsed, ensure_dir, entry, eyebrow, fit, flow, icon_dir, mix, open_path,
+                   set_window_icon, short, tail)
 
 CHIP_LABEL = {"stm32": "STM32", "at32": "AT32", "gd32": "GD32", "auto": "Auto"}
-POWER = {  # short tag, full sentence
-    "5v": ("5 V at plug", "5 V and GND from the ST-Link at the controller's cable plug, SWDIO and SWCLK at the "
-                          "back. Never put 5 V on the 3.3 V pad (community info)."),
-    "3v3": ("3.3 V pad", "3.3 V pad from the ST-Link, plus GND, SWDIO and SWCLK."),
-    "3v3-back": ("3.3 V at back", "3.3 V from the ST-Link on the pad at the back, plus GND, SWDIO and SWCLK "
-                                  "(unlike G2/F2/E2 Pro, although it is the same controller)."),
-    "ble": ("BLE pads", "SWD pads on the BLE board: GND, SWDIO, SWCLK and 3.3 V from the ST-Link."),
-}
 BATTERY_NOTE = "Scooter battery disconnected · the ST-Link powers the board"
+WIRING_NOTE = ("Disconnect the scooter battery; the ST-Link powers the board. Connect GND, SWDIO, SWCLK and the "
+               "supply as shown in the diagram. Never put 5 V on the 3.3 V pad.")
 HINT_DRV = "Battery disconnected, ST-Link on the controller? Then press start."
-HINT_BLE = "Battery disconnected, ST-Link on the BLE pads? Then press start."
+HINT_BLE = "Dashboard connected to the main cable, ST-Link on the BLE pads? Then press start."
 
 ESC_ACTIONS = [
     dict(id="check", tab="Check", title="Check connection", start="Check connection",
@@ -86,13 +84,26 @@ E3_ACTIONS = [
          plan=["Create the patched file"]),
 ]
 ALL_ACTIONS = {a["id"]: a for a in ESC_ACTIONS + E3_ACTIONS}
+STARTUP_WARNING = True   # the tests switch it off
+WARNING_POINTS = [
+    ("A failed flash stops the scooter",
+     "TorqueFlasher erases and rewrites the controller of your scooter. After an interrupted run or a wrong file "
+     "the scooter does not work until the controller is flashed again successfully."),
+    ("Battery disconnected",
+     "When flashing the ESC, always disconnect the scooter battery; the ST-Link powers the board. Wire it as shown "
+     "in the diagram."),
+    ("Warranty and road use",
+     "Changing the firmware, serial number or region can void the warranty and the scooter's road approval. "
+     "Only ride it where that is allowed."),
+    ("Beta software",
+     "Most scooters are not tested on real hardware yet. You use TorqueFlasher at your own risk, without any "
+     "warranty (MIT license)."),
+]
 
 
 # ----------------------------------------------------------------------------------------------- settings
 def settings_file() -> pathlib.Path:
-    base = os.environ.get("APPDATA") if os.name == "nt" else \
-        (os.environ.get("XDG_CONFIG_HOME") or str(pathlib.Path.home() / ".config"))
-    return pathlib.Path(base or pathlib.Path.home()) / "torqueflasher" / "settings.json"
+    return core.config_dir() / "settings.json"
 
 
 def load_settings() -> dict:
@@ -120,7 +131,7 @@ def models():
             out.append((brand, key, item))
         if brand == "ninebot":
             e3 = core.PROFILES["e3"]
-            out.append((brand, "e3", {"name": e3["name"], "power": "3v3-back", "chips": ["at32"],
+            out.append((brand, "e3", {"name": e3["name"], "short": e3.get("short"), "chips": ["at32"],
                                       "default_chip": "at32", "tested": e3.get("tested")}))
     return out
 
@@ -154,11 +165,6 @@ def chip_valid(item, chip) -> bool:
     return chip in item.get("chips", []) or (mode == "auto" and chip == "auto")
 
 
-def model_sub(item) -> str:
-    chips = (item.get("variant") or "").upper() or " / ".join(c.upper() for c in item.get("chips", []))
-    return f"{chips} · {POWER.get(item.get('power', '3v3'), POWER['3v3'])[0]}"
-
-
 def draw_wordmark(c: tk.Canvas, font, x, y, accent=None):
     c.create_text(x, y, text="TORQUE", fill=TXT, font=font, anchor="w")
     x2 = x + font.measure("TORQUE")
@@ -168,66 +174,254 @@ def draw_wordmark(c: tk.Canvas, font, x, y, accent=None):
 
 # ----------------------------------------------------------------------------------------------- dialogs
 class ScooterPicker(tk.Toplevel):
+    """Models grouped by series, a search over both brands, and the last used scooters."""
+    COL_W = 404
+
     def __init__(self, app):
         super().__init__(app)
         self.app = app
         self.title("Choose scooter")
         self.configure(bg=PANEL, highlightthickness=1, highlightbackground=LINE2)
+        dark_titlebar(self)
         self.resizable(False, False)
         self.transient(app)
-        self.brand = tk.StringVar(value=app.brand)
+        self.brand = tk.StringVar(value=app.brand)   # the selection
         self.model = tk.StringVar(value=app.model)
-        self.body = tk.Frame(self, bg=PANEL, padx=24, pady=20)
-        self.body.pack(fill="both", expand=True)
+        self.tab = app.brand                         # brand shown while not searching
+        self.scope = "all"                           # brand filter while searching
+        self.query = tk.StringVar()
+        self.focus_i, self.keys_used = 0, False
+        self.visible: list = []
+        self.chips: dict = {}
+        self._build()
+        self._fix_height()
         self.render()
-        self.bind("<Escape>", lambda e: self.close(False))
+        self.query.trace_add("write", lambda *a: self._on_query())
+        for seq, fn in (("<Escape>", self._escape), ("<Return>", self._enter), ("<KP_Enter>", self._enter),
+                        ("<Down>", lambda e: self._move(1)), ("<Up>", lambda e: self._move(-1))):
+            self.bind(seq, fn)
         self.protocol("WM_DELETE_WINDOW", lambda: self.close(False))
         center_on(self, app)
         self.wait_visibility()
         self.grab_set()
+        self.search.focus_set()
 
-    def render(self):
+    # ---- layout
+    def _build(self):
         f = self.app.f
-        for w in self.body.winfo_children():
-            w.destroy()
-        head = tk.Frame(self.body, bg=PANEL)
+        body = tk.Frame(self, bg=PANEL, padx=26, pady=22)
+        body.pack(fill="both", expand=True)
+        head = tk.Frame(body, bg=PANEL)
         head.pack(fill="x")
         left = tk.Frame(head, bg=PANEL)
         left.pack(side="left")
         eyebrow(left, "Step 1" if self.app.first_run else "Scooter", f, PANEL).pack(anchor="w")
         tk.Label(left, text="Choose your scooter", bg=PANEL, fg=TXT, font=f.h1).pack(anchor="w")
-        tabs = Tabs(head, f, self.set_brand, bg=PANEL, height=34, pad=18)
-        tabs.set([("ninebot", "Ninebot", True, ""), ("xiaomi", "Xiaomi", True, "")], self.brand.get())
-        tabs.pack(side="right", anchor="s")
-        grid = tk.Frame(self.body, bg=PANEL)
-        grid.pack(pady=(16, 0))
-        items = [(k, it) for b, k, it in models() if b == self.brand.get()]
-        for i, (key, it) in enumerate(items):
-            RadioCard(grid, self.app, it["name"], model_sub(it), key, self.model, self.render, width=262,
-                      height=54, tag="✓ TESTED" if it.get("tested") else None).grid(
-                row=i // 3, column=i % 3, padx=4, pady=4)
-        foot = tk.Frame(self.body, bg=PANEL)
+        self.tabs = Tabs(head, f, self._tab, bg=PANEL, height=36, pad=18)
+        self.tabs.pack(side="right", anchor="s")
+
+        self.sfield = RoundField(body, lambda p: entry(p, self.query, f, width=40, font=f.search), height=46,
+                                 radius=22, padx=20, pady=11)
+        self.sfield.pack(fill="x", pady=(18, 0))
+        self.search = self.sfield.child
+        self.placeholder = tk.Label(self.sfield, text="Search model, e.g. G30, F2, M365", bg=BG, fg=MUT,
+                                    font=f.search, cursor="xterm")
+        self.placeholder.bind("<Button-1>", lambda e: self.search.focus_set())
+        self.clear_hint = Pill(self.sfield, "ESC · CLEAR", f.eyebrow, BG)
+
+        self.recent_row = tk.Frame(body, bg=PANEL)
+        self.recent_row.pack(fill="x", pady=(14, 0))
+        self._render_recent()
+
+        self.res = RoundPanel(body, PANEL, fill=PANEL, outline=PANEL, radius=0, pad=6, valign="top")
+        self.res.configure(width=2 * self.COL_W + 26 + 12, height=300)
+        self.res.pack(fill="x", pady=(12, 0))
+
+        foot = tk.Frame(body, bg=PANEL)
         foot.pack(fill="x", pady=(16, 0))
-        tk.Label(foot, text="✓ TESTED = confirmed on real hardware. Everything else is untested so far; "
-                            "results are welcome (Info page).",
-                 bg=PANEL, fg=MUT, font=f.small, wraplength=520, justify="left").pack(side="left")
-        Button(foot, "Done", lambda: self.close(True), f, kind="primary", bg=PANEL, small=True, height=34).pack(
+        self.foot_dot = tk.Canvas(foot, width=10, height=10, bg=PANEL, highlightthickness=0)
+        self.foot_dot.create_oval(1, 1, 9, 9, fill=OK, outline="")
+        self.foot_dot.pack(side="left")
+        self.foot_note = tk.Label(foot, text="", bg=PANEL, fg=MUT, font=f.small)
+        self.foot_note.pack(side="left", padx=(8, 0))
+        Button(foot, "Done", lambda: self.close(True), f, kind="primary", bg=PANEL, small=True, height=36).pack(
             side="right")
-        Button(foot, "Cancel", lambda: self.close(False), f, kind="ghost", bg=PANEL, small=True, height=34).pack(
+        Button(foot, "Cancel", lambda: self.close(False), f, kind="ghost", bg=PANEL, small=True, height=36).pack(
             side="right", padx=8)
 
-    def set_brand(self, b):
-        if b != self.brand.get():
-            self.brand.set(b)
-            self.model.set([k for br, k, _ in models() if br == b][0])
-            self.render()
+    def _render_recent(self):
+        f = self.app.f
+        eyebrow(self.recent_row, "Recent", f, PANEL).pack(side="left", padx=(0, 12))
+        rec = [(b, k) for b, k in self.app.recent() if item_for(b, k)]
+        if not rec:
+            tk.Label(self.recent_row, text="your last scooters show up here", bg=PANEL, fg=MUT,
+                     font=f.small).pack(side="left", pady=8)
+            return
+        for b, k in rec:
+            it = item_for(b, k)
+            Chip(self.recent_row, f, it.get("short") or it["name"], lambda b=b, k=k: self.pick(b, k, close=True),
+                 sub=b.capitalize() if b != self.app.brand else None, small=True).pack(side="left", padx=(0, 8))
 
-    def on_model(self):  # kept for callers that set .model directly
+    def _fix_height(self):
+        """Same height for both brands, so the dialog does not jump when switching or searching."""
+        h = 0
+        for b in ("xiaomi", "ninebot"):
+            self.tab = b
+            self.render()
+            self.update_idletasks()
+            h = max(h, self.res.inner.winfo_reqheight())
+        self.res.configure(height=h + 16)
+        self.tab = self.app.brand
+
+    # ---- content
+    def render(self):
+        q = self.query.get().strip()
+        if q:
+            self.tabs.set([("all", "All results", True, ""), ("ninebot", "Ninebot", True, ""),
+                           ("xiaomi", "Xiaomi", True, "")], self.scope)
+            self.placeholder.place_forget()
+            self.clear_hint.place(relx=1, x=-14, rely=0.5, anchor="e")
+        else:
+            self.tabs.set([("ninebot", "Ninebot", True, ""), ("xiaomi", "Xiaomi", True, "")], self.tab)
+            self.placeholder.place(x=20, rely=0.5, anchor="w")
+            self.clear_hint.place_forget()
+        inner = self.res.inner
+        for w in inner.winfo_children():
+            w.destroy()
+        groups = self._groups(q)
+        self.visible = [(b, k) for _, items in groups for b, k, _, _ in items]
+        self.focus_i = min(self.focus_i, max(0, len(self.visible) - 1))
+        self.chips = {}
+        if not groups:
+            tk.Label(inner, text=f"No scooter matches “{q}”.", bg=PANEL, fg=DIM, font=self.app.f.body).pack(
+                anchor="w", pady=4)
+        else:
+            cols = [tk.Frame(inner, bg=PANEL) for _ in range(2)]
+            cols[0].pack(side="left", anchor="n")
+            cols[1].pack(side="left", anchor="n", padx=(26, 0))
+            half = (len(groups) + 1) // 2
+            for i, (title, items) in enumerate(groups):
+                g = tk.Frame(cols[0 if i < half else 1], bg=PANEL)
+                g.pack(anchor="w", pady=(0 if i in (0, half) else 16, 0))
+                eyebrow(g, title, self.app.f, PANEL).pack(anchor="w", pady=(0, 9))
+                flow(g, [lambda row, b=b, k=k, it=it, m=m: self._chip(row, b, k, it, m) for b, k, it, m in items],
+                     self.COL_W)
+        n = len(self.visible)
+        if q:
+            self.foot_dot.pack_forget()
+            self.foot_note.configure(text=f"{n} match{'' if n == 1 else 'es'} · ↑ ↓ to move, Enter to choose")
+        else:
+            if not self.foot_dot.winfo_manager():
+                self.foot_dot.pack(side="left", before=self.foot_note)
+            self.foot_note.configure(text="tested on real hardware")
+        self.res.scroll_top()
+        self.res.after_idle(self.res.redraw)
+
+    def _chip(self, row, b, k, it, match):
+        sel = (b, k) == (self.brand.get(), self.model.get())
+        focused = (self.keys_used or self.query.get().strip()) and self.visible and \
+            self.visible[self.focus_i] == (b, k)
+        c = Chip(row, self.app.f, it.get("short") or it["name"], lambda: self.pick(b, k), match=match,
+                 dot=bool(it.get("tested")), state="selected" if sel else "focus" if focused else "normal",
+                 on_double=lambda: self.pick(b, k, close=True))
+        self.chips[(b, k)] = c
+        return c
+
+    def _groups(self, q):
+        brands = [self.tab] if not q else (["ninebot", "xiaomi"] if self.scope == "all" else [self.scope])
+        out = []
+        for b in brands:
+            for title, keys in core.PROFILES["picker_groups"][b]:
+                items = []
+                for k in keys:
+                    it = item_for(b, k)
+                    m = self._match(q, k, it) if (it and q) else None
+                    if it and m is not False:
+                        items.append((b, k, it, m or None))
+                if items:
+                    out.append((f"{b.capitalize()} · {title}" if q else title, items))
+        if q:  # best matches first: whole word ("f2" -> F2 / Plus / Pro), then word start (F20), then anywhere
+            out.sort(key=lambda grp: min(self._score(q, it) for _b, _k, it, _m in grp[1]))
+        return out
+
+    @staticmethod
+    def _score(q, it):
+        name, ql = (it.get("short") or it["name"]).lower(), re.escape(q.lower())
+        if re.search(r"(?<![a-z0-9])" + ql + r"(?![a-z0-9])", name):
+            return 0
+        return 1 if re.search(r"(?<![a-z0-9])" + ql, name) else 2
+
+    @staticmethod
+    def _match(q, key, it):
+        """False: no match. (start, end): q found in the short name (shown highlighted). (): other match."""
+        short_name = it.get("short") or it["name"]
+        i = short_name.lower().find(q.lower())
+        if i >= 0:
+            return i, i + len(q)
+        squash = lambda s: "".join(ch for ch in s.lower() if ch.isalnum())  # noqa: E731
+        qs = squash(q)
+        if qs and (qs in squash(short_name) or qs in key.lower() or (len(qs) >= 3 and qs in squash(it["name"]))):
+            return ()
+        return False
+
+    # ---- input
+    def pick(self, b, k, close=False):
+        self.brand.set(b)
+        self.model.set(k)
+        if close:
+            self.close(True)
+            return
+        if not self.query.get().strip():
+            self.tab = b
+        if (b, k) in self.visible:
+            self.focus_i = self.visible.index((b, k))
         self.render()
 
+    def _tab(self, v):
+        if self.query.get().strip():
+            self.scope, self.focus_i = v, 0
+        else:
+            self.tab = v
+        self.render()
+
+    def set_brand(self, b):  # show a brand (kept for callers and tests)
+        self._tab(b)
+
+    def on_model(self):
+        self.render()
+
+    def _on_query(self):
+        self.focus_i = 0
+        self.render()
+
+    def _move(self, d):
+        if not self.visible:
+            return
+        if not self.keys_used and not self.query.get().strip():
+            cur = (self.brand.get(), self.model.get())
+            self.focus_i = self.visible.index(cur) if cur in self.visible else 0
+        else:
+            self.focus_i = (self.focus_i + d) % len(self.visible)
+        self.keys_used = True
+        self.render()
+
+    def _enter(self, _e=None):
+        if self.visible and (self.keys_used or self.query.get().strip()):
+            self.pick(*self.visible[self.focus_i], close=True)
+        else:
+            self.close(True)
+
+    def _escape(self, _e=None):
+        if self.query.get():
+            self.query.set("")
+        else:
+            self.close(False)
+
     def close(self, apply):
+        self.res._wheel(False)
         self.grab_release()
         self.destroy()
+        self.app.first_run = False
         if apply:
             self.app.set_scooter(self.brand.get(), self.model.get())
 
@@ -240,6 +434,7 @@ class SettingsDialog(tk.Toplevel):
         self.app, self.page = app, page
         self.title("Settings" if page == "settings" else f"About {core.APP_NAME}")
         self.configure(bg=PANEL, highlightthickness=1, highlightbackground=LINE2)
+        dark_titlebar(self)
         self.resizable(False, False)
         self.transient(app)
         self.body = tk.Frame(self, bg=PANEL, padx=26, pady=20)
@@ -262,10 +457,8 @@ class SettingsDialog(tk.Toplevel):
         return row
 
     def _path(self, path):
-        box = tk.Frame(self.body, bg=BG, highlightthickness=1, highlightbackground=LINE2)
-        box.pack(fill="x", pady=(0, 4))
-        tk.Label(box, text=short(path, 64), bg=BG, fg=TXT, font=self.app.f.mono, anchor="w", padx=10, pady=7).pack(
-            fill="x")
+        RoundField(self.body, lambda p: tk.Label(p, text=short(path, 64), bg=BG, fg=TXT, font=self.app.f.mono,
+                                                 anchor="w")).pack(fill="x", pady=(0, 4))
 
     def _note(self, text, color=MUT):
         tk.Label(self.body, text=text, bg=PANEL, fg=color, font=self.app.f.small, anchor="w", justify="left",
@@ -305,7 +498,7 @@ class SettingsDialog(tk.Toplevel):
                command=app.on_dry_changed).pack(anchor="w")
 
         probs = core.check_setup()
-        self._section("Program folder", [("Open", lambda: open_path(core.ROOT))])
+        self._section("Program files", [("Open", lambda: open_path(core.ROOT))])
         self._path(core.ROOT)
         if probs:
             r = tk.Frame(self.body, bg=PANEL)
@@ -321,10 +514,11 @@ class SettingsDialog(tk.Toplevel):
         self._path(e3tool.backups_dir())
         self._note("E3 backups are saved here; Restore lists the backups in this folder.")
 
-        self._section("Dumps and logs", [("Dumps", lambda: open_path(ensure_dir(core.ROOT / "dumps"))),
-                                         ("Logs", lambda: open_path(ensure_dir(core.LOGS)))])
-        self._note("Check connection saves serial number + mileage to dumps/, the full OpenOCD output of every "
-                   "run goes to logs/.")
+        self._section("Data folder", [("Browse…", self.browse_data), ("Default", self.reset_data),
+                                      ("Open", lambda: open_path(ensure_dir(core.DATA)))])
+        self._path(core.DATA)
+        self._note("dumps/ (serial number + mileage from Check connection), logs/ (full OpenOCD output) and, unless "
+                   "set above, e3_backups/.")
 
     def pick_accent(self, name):
         self.app.set_accent(name)
@@ -343,6 +537,22 @@ class SettingsDialog(tk.Toplevel):
             self.app.backup_sel = None
             self.render()
 
+    def browse_data(self):
+        p = filedialog.askdirectory(parent=self, title="Data folder", initialdir=str(core.DATA))
+        if p:
+            self.app.cfg["data_dir"] = p
+            self.app.save_cfg()
+            core.set_data_dir(p)
+            self.app.backup_sel = None
+            self.render()
+
+    def reset_data(self):
+        self.app.cfg.pop("data_dir", None)
+        self.app.save_cfg()
+        core.set_data_dir(core.resolve_data_dir())
+        self.app.backup_sel = None
+        self.render()
+
     def reset_e3(self):
         e3tool.set_backups_dir(None)
         self.app.cfg.pop("e3_backups", None)
@@ -359,8 +569,7 @@ class SettingsDialog(tk.Toplevel):
         end = draw_wordmark(wm, f.wordmark_l, 0, 17)
         wm.configure(width=end + 4)
         wm.pack(side="left")
-        tk.Label(top, text=f"v{core.APP_VERSION} · {core.APP_STAGE.lower()}", bg=PANEL, fg=MUT, font=f.mono_s,
-                 padx=8, pady=2, highlightthickness=1, highlightbackground=LINE2).pack(side="left", padx=12)
+        Pill(top, f"v{core.APP_VERSION} · {core.APP_STAGE.lower()}", f.mono_s, PANEL).pack(side="left", padx=12)
         tk.Label(self.body, text="Flashes the ESC (DRV) and BLE module of Ninebot and Xiaomi scooters over an "
                                  "ST-Link with OpenOCD, and makes backups and serial-number changes for the "
                                  "Ninebot E3 / E3 Pro. Every write is read back and compared.",
@@ -387,9 +596,10 @@ class SettingsDialog(tk.Toplevel):
             Link(row, label, cmd, f, PANEL).pack(side="left", padx=(16, 0))
 
         self._section("Credits")
-        for who, what in (("ScooterHacking (BX LR)", "flash sequences, bootloader and firmware files, wiring "
+        for who, what in (("ScooterHacking", "flash sequences, bootloader and firmware files, wiring "
                                                      "diagrams from ReFlasher; F2 GD32 files. Used with permission."),
-                          ("BastelPichi", "E2 Pro firmware 32kmh.bin. Used with permission."),
+                          ("BastelPichi", "provided the E2 Pro firmware 32kmh.bin (author unnamed) and the OK "
+                                          "to include it."),
                           ("OpenOCD", "on-chip debugger, GPL-2.0.")):
             r = tk.Frame(self.body, bg=PANEL)
             r.pack(fill="x", pady=1)
@@ -405,18 +615,98 @@ class SettingsDialog(tk.Toplevel):
         self.destroy()
 
 
+class StartupWarning(tk.Toplevel):
+    """Shown before the main window opens. 'I understand' opens TorqueFlasher; Quit or closing the window ends it.
+    The button unlocks after a few seconds so the text is at least seen."""
+    DELAY = 3
+
+    def __init__(self, app, on_accept):
+        super().__init__(app)
+        self.app, self.on_accept, self.left = app, on_accept, self.DELAY
+        self.title(f"{core.APP_NAME} · Before you start")
+        self.configure(bg=PANEL, highlightthickness=1, highlightbackground=LINE2)
+        dark_titlebar(self)
+        self.resizable(False, False)
+        f = app.f
+        body = tk.Frame(self, bg=PANEL, padx=30, pady=26)
+        body.pack(fill="both", expand=True)
+        head = tk.Frame(body, bg=PANEL)
+        head.pack(fill="x")
+        mark = tk.Canvas(head, width=46, height=46, bg=PANEL, highlightthickness=0)
+        mark.create_oval(1, 1, 45, 45, fill=mix(AMBER, PANEL, 0.86), outline=mix(AMBER, PANEL, 0.45))
+        mark.create_text(23, 24, text="!", fill=AMBER, font=f.h1)
+        mark.pack(side="left", padx=(0, 14))
+        t = tk.Frame(head, bg=PANEL)
+        t.pack(side="left")
+        eyebrow(t, "Warning", f, PANEL, fg=AMBER).pack(anchor="w")
+        tk.Label(t, text="Before you start", bg=PANEL, fg=TXT, font=f.h1).pack(anchor="w")
+        for i, (title, text) in enumerate(WARNING_POINTS, 1):
+            row = tk.Frame(body, bg=PANEL)
+            row.pack(fill="x", pady=(16 if i == 1 else 12, 0))
+            num = tk.Canvas(row, width=22, height=22, bg=PANEL, highlightthickness=0)
+            num.create_oval(1, 1, 21, 21, fill=PANEL2, outline=LINE2)
+            num.create_text(11, 11, text=str(i), fill=DIM, font=f.mono_s)
+            num.pack(side="left", anchor="n", padx=(0, 12))
+            col = tk.Frame(row, bg=PANEL)
+            col.pack(side="left", fill="x")
+            tk.Label(col, text=title, bg=PANEL, fg=TXT, font=f.body_b, anchor="w").pack(anchor="w")
+            tk.Label(col, text=text, bg=PANEL, fg=DIM, font=f.small, justify="left", wraplength=470,
+                     anchor="w").pack(anchor="w", pady=(2, 0))
+        tk.Label(body, text="Not affiliated with Segway-Ninebot, Xiaomi or ScooterHacking.", bg=PANEL, fg=MUT,
+                 font=f.small, anchor="w").pack(fill="x", pady=(16, 0))
+        foot = tk.Frame(body, bg=PANEL)
+        foot.pack(fill="x", pady=(18, 0))
+        Pill(foot, f"v{core.APP_VERSION} · {core.APP_STAGE.lower()}", f.mono_s, PANEL).pack(side="left")
+        self.ok = Button(foot, f"I understand  ·  {self.left}", self.accept, f, kind="primary", bg=PANEL, small=True,
+                         height=38, width=190)
+        self.ok.pack(side="right")
+        self.ok.set_enabled(False)
+        Button(foot, "Quit", self.quit_app, f, kind="ghost", bg=PANEL, small=True, height=38).pack(side="right",
+                                                                                                 padx=8)
+        self.protocol("WM_DELETE_WINDOW", self.quit_app)
+        self.bind("<Escape>", lambda e: self.quit_app())
+        self.bind("<Return>", lambda e: self.accept())
+        self.update_idletasks()
+        x = (self.winfo_screenwidth() - self.winfo_reqwidth()) // 2
+        y = (self.winfo_screenheight() - self.winfo_reqheight()) // 3
+        self.geometry(f"+{max(0, x)}+{max(0, y)}")
+        self.after(1000, self._tick)
+        self.focus_force()
+
+    def _tick(self):
+        if not self.winfo_exists():
+            return
+        self.left -= 1
+        if self.left > 0:
+            self.ok.set_text(f"I understand  ·  {self.left}")
+            self.after(1000, self._tick)
+        else:
+            self.ok.set_text("I understand")
+            self.ok.set_enabled(True)
+
+    def accept(self, force=False):
+        if self.left > 0 and not force:
+            return
+        self.destroy()
+        self.on_accept()
+
+    def quit_app(self):
+        self.app.destroy()
+
+
 class DiagramViewer(tk.Toplevel):
-    def __init__(self, app, path: pathlib.Path, power_text: str):
+    def __init__(self, app, path: pathlib.Path, note: str):
         super().__init__(app)
         self.title(f"Wiring · {path.name}")
         self.configure(bg=BG)
+        dark_titlebar(self)
         img = tk.PhotoImage(file=str(path))
         sw, sh = app.winfo_screenwidth() - 120, app.winfo_screenheight() - 200
         factor = max(1, -(-img.width() // max(1, sw)), -(-img.height() // max(1, sh)))
         if factor > 1:
             img = img.subsample(factor, factor)
         self.img = img
-        tk.Label(self, text=power_text, bg=BG, fg=AMBER, font=app.f.small, wraplength=max(400, img.width()),
+        tk.Label(self, text=note, bg=BG, fg=AMBER, font=app.f.small, wraplength=max(400, img.width()),
                  justify="left").pack(anchor="w", padx=12, pady=(10, 0))
         tk.Label(self, image=img, bg=BG).pack(padx=10, pady=10)
         tk.Label(self, text="Wiring diagram from ScooterHacking's ReFlasher.", bg=BG, fg=MUT, font=app.f.small).pack(
@@ -432,8 +722,11 @@ class App(tk.Tk):
     LEFT_W = LEFT_W
 
     def __init__(self):
-        super().__init__()
+        super().__init__(className="TorqueFlasher")  # window class: Linux taskbars match it to the .desktop file
         self.title(core.APP_NAME)
+        if STARTUP_WARNING:
+            self.withdraw()  # opens after the startup warning
+        dark_titlebar(self)
         sw, sh = self.winfo_screenwidth(), self.winfo_screenheight()
         self.geometry(f"{min(1180, max(1000, sw - 80))}x{min(820, max(700, sh - 100))}")
         self.minsize(1000, 700)
@@ -506,6 +799,16 @@ class App(tk.Tk):
         self.after(60, self.poll)
         self.after(450, self.tick)
         self.protocol("WM_DELETE_WINDOW", self.on_close)
+        self.warning = None
+        if STARTUP_WARNING:
+            self.after(50, lambda: setattr(self, "warning", StartupWarning(self, self._opened)))
+        else:
+            self._opened()
+
+    def _opened(self):
+        """Main window visible (after the startup warning); on the very first start the scooter picker follows."""
+        self.warning = None
+        self.deiconify()
         if self.first_run:
             self.after(400, self.open_picker)
 
@@ -521,7 +824,9 @@ class App(tk.Tk):
             self.option_add(f"*Menu.{k}", v)
 
     def _icon(self):
-        try:
+        if set_window_icon(self, core.ROOT / "assets", T.name):
+            return
+        try:  # fallback without the icon files: a small drawn bolt
             img = tk.PhotoImage(width=32, height=32)
             img.put(BG, to=(0, 0, 32, 32))
             for y in range(4, 28):
@@ -531,6 +836,17 @@ class App(tk.Tk):
             self._icon_img = img
         except Exception:  # noqa
             pass
+
+    def recent(self):
+        """Last used scooters [(brand, model)], newest first."""
+        out = []
+        for entry_ in self.cfg.get("recent", []):
+            try:
+                b, k = entry_.split("/", 1)
+                out.append((b, k))
+            except ValueError:
+                pass
+        return out
 
     # ---------------------------------------------------------------- scooter helpers
     def is_e3(self):
@@ -572,9 +888,11 @@ class App(tk.Tk):
         it = self.item()
         return "xiaomi" if self.brand == "xiaomi" or it.get("sn_format") == "xiaomi" else "ninebot"
 
-    def power_text(self, ble=False):
-        key = "ble" if ble else self.item().get("power", "3v3")
-        return POWER[key][1] + " " + BATTERY_NOTE + "."
+    def wiring_text(self, ble=False):
+        if ble:
+            return ("BLE module: connect the dashboard to the main cable, and the ST-Link to the SWD pads of the BLE "
+                    "board as shown in the diagram.")
+        return WIRING_NOTE
 
     def _prefill_sn(self):
         it = self.item()
@@ -592,6 +910,8 @@ class App(tk.Tk):
         self.brand, self.model, self.chip = brand, model, chip
         if changed:
             self._prefill_sn()
+        key = f"{brand}/{model}"
+        self.cfg["recent"] = ([key] + [k for k in self.cfg.get("recent", []) if k != key])[:3]
         self.save_cfg()
         ids = [a["id"] for a in self.actions()]
         if self.action_id not in ids or not self.available(ALL_ACTIONS[self.action_id]):
@@ -627,11 +947,14 @@ class App(tk.Tk):
 
         bar = tk.Frame(sh, bg=BG)
         bar.pack(fill="x")
+        logo = icon_dir(core.ROOT / "assets", T.name) / "icon-32.png"
+        if logo.exists():
+            self._bar_icon = tk.PhotoImage(master=self, file=str(logo))
+            tk.Label(bar, image=self._bar_icon, bg=BG).pack(side="left", padx=(18, 0))
         wm = tk.Canvas(bar, height=54, width=10, bg=BG, highlightthickness=0)
-        wm.configure(width=draw_wordmark(wm, f.wordmark, 20, 27) + 6)
+        wm.configure(width=draw_wordmark(wm, f.wordmark, 10 if logo.exists() else 20, 27) + 6)
         wm.pack(side="left")
-        tk.Label(bar, text=f"v{core.APP_VERSION} · {core.APP_STAGE.lower()}", bg=BG, fg=MUT, font=f.mono_s,
-                 padx=8, pady=2, highlightthickness=1, highlightbackground=LINE2).pack(side="left", padx=(6, 0))
+        Pill(bar, f"v{core.APP_VERSION} · {core.APP_STAGE.lower()}", f.mono_s, BG).pack(side="left", padx=(6, 0))
         IconButton(bar, "⚙", self.open_settings, f, BG, "Settings").pack(side="right", padx=(6, 18))
         IconButton(bar, "ⓘ", self.open_info, f, BG, "Info, credits, test status").pack(side="right", padx=6)
         self.dry_chip = Badge(bar, f, bg=BG, command=self.toggle_dry)
@@ -776,8 +1099,8 @@ class App(tk.Tk):
         sub.pack(fill="x", pady=(4, 0))
         what = "backup · SN change" if self.is_e3() else ("ESC + BLE" if self.ble_key() else "ESC")
         tag_w = f.eyebrow.measure("✓ TESTED") + 12 if it.get("tested") else 0
-        tk.Label(sub, text=fit(f.mono_s, f"{self.brand.capitalize()} · {what} · {POWER[it.get('power', '3v3')][0]}",
-                               width - tag_w), bg=PANEL, fg=DIM, font=f.mono_s).pack(side="left")
+        tk.Label(sub, text=fit(f.mono_s, f"{self.brand.capitalize()} · {what}", width - tag_w), bg=PANEL, fg=DIM,
+                 font=f.mono_s).pack(side="left")
         if it.get("tested"):
             tk.Label(sub, text="✓ TESTED", bg=PANEL, fg=OK, font=f.eyebrow).pack(side="left", padx=(10, 0))
         locked = self.busy or self.stage == "countdown"
@@ -861,13 +1184,13 @@ class App(tk.Tk):
         counting = self.stage == "countdown"
         locked = self.busy or counting
         minus = Button(row, "−", lambda: self.bump_countdown(-1), f, kind="ghost", bg=PANEL, small=True,
-                       width=34, height=32)
+                       width=34, height=34)
         minus.pack(side="left")
         self.cd_value = tk.Label(row, text=f"{self.cd_left if counting else self.countdown} s", bg=PANEL,
                                  fg=AMBER if counting else TXT, font=f.big, width=4)
         self.cd_value.pack(side="left")
         plus = Button(row, "+", lambda: self.bump_countdown(1), f, kind="ghost", bg=PANEL, small=True, width=34,
-                      height=32)
+                      height=34)
         plus.pack(side="left")
         for b in (minus, plus):
             b.set_enabled(not locked)
@@ -1091,10 +1414,9 @@ class App(tk.Tk):
             self._ptitle("Setup needed", color=AMBER)
             self._note("TorqueFlasher needs the OpenOCD, bootloader and firmware files next to it (folders "
                        "binaries, oocd, diagrams).", DIM, pady=(0, 8))
-            box = tk.Frame(self.p, bg=BG, highlightthickness=1, highlightbackground=LINE2)
-            box.pack(fill="x")
-            tk.Label(box, text="\n".join(short(p, 54) for p in probs[:6]) + ("\n…" if len(probs) > 6 else ""),
-                     bg=BG, fg=TXT, font=self.f.mono_s, justify="left", anchor="w", padx=10, pady=8).pack(fill="x")
+            text = "\n".join(short(p, 54) for p in probs[:6]) + ("\n…" if len(probs) > 6 else "")
+            RoundField(self.p, lambda p: tk.Label(p, text=text, bg=BG, fg=TXT, font=self.f.mono_s, justify="left",
+                                                  anchor="w"), pady=9).pack(fill="x")
             Link(self.p, "Open settings", self.open_settings, self.f, PANEL).pack(anchor="w", pady=(10, 0))
             self._ready_fn = lambda: (False, "Files missing", "See Settings → Program folder.")
             self._update_ready()
@@ -1168,14 +1490,16 @@ class App(tk.Tk):
         form.columnconfigure(1, weight=1)
         tk.Label(form, text="Serial number", bg=PANEL, fg=DIM, font=f.body).grid(row=0, column=0, sticky="w",
                                                                                  padx=(0, 12), pady=4)
-        self.sn_entry = entry(form, self.sn_var, f, width=16)
-        self.sn_entry.grid(row=0, column=1, sticky="we", pady=4, ipady=5)
+        self.sn_field = RoundField(form, lambda p: entry(p, self.sn_var, f, width=16), pady=8)
+        self.sn_field.grid(row=0, column=1, sticky="we", pady=4)
+        self.sn_entry = self.sn_field.child
         self.sn_info = tk.Label(form, text="", bg=PANEL, fg=MUT, font=f.mono_s, width=7, anchor="e")
         self.sn_info.grid(row=0, column=2, sticky="e", padx=(8, 0))
         tk.Label(form, text="Mileage (km)", bg=PANEL, fg=DIM, font=f.body).grid(row=1, column=0, sticky="w",
                                                                                 padx=(0, 12), pady=4)
-        self.km_entry = entry(form, self.km_var, f, width=16)
-        self.km_entry.grid(row=1, column=1, sticky="we", pady=4, ipady=5)
+        self.km_field = RoundField(form, lambda p: entry(p, self.km_var, f, width=16), pady=8)
+        self.km_field.grid(row=1, column=1, sticky="we", pady=4)
+        self.km_entry = self.km_field.child
         note = it.get("gui_note")
         if note:
             self._note(note)
@@ -1234,7 +1558,7 @@ class App(tk.Tk):
         if hasattr(self, "sn_info") and self.sn_info.winfo_exists() and self.write_ud.get():
             ok = core.sn_valid(v.strip(), self.sn_format())
             self.sn_info.configure(text=f"{len(v.strip())}/14" + (" ✓" if ok else ""), fg=T.ACCENT if ok else MUT)
-            self.sn_entry.configure(highlightbackground=mix(T.ACCENT, PANEL, 0.45) if ok else LINE2)
+            self.sn_field.set_border(mix(T.ACCENT, PANEL, 0.45) if ok else LINE2)
         self._update_ready()
 
     def pick_fw(self):
@@ -1250,7 +1574,7 @@ class App(tk.Tk):
 
     def _idle_ble_check(self, a):
         self._ptitle("Check BLE connection")
-        self._kv(self.p, [("Module", "nRF51822 on the BLE board"), ("Wiring", "GND, SWDIO, SWCLK, 3.3 V pads"),
+        self._kv(self.p, [("Module", "nRF51822 on the BLE board"), ("Wiring", "SWD pads of the BLE board"),
                           ("Writes", "nothing")])
         Toggle(self.p, "Fast mode", self.ble_fast, self.f, bg=PANEL, command=self.save_cfg,
                sub="higher SWD clock (nrf51-fast.cfg); turn off if it fails").pack(anchor="w", pady=(12, 0))
@@ -1264,7 +1588,8 @@ class App(tk.Tk):
         form.columnconfigure(1, weight=1)
         tk.Label(form, text="Bluetooth name", bg=PANEL, fg=DIM, font=f.body).grid(row=0, column=0, sticky="w",
                                                                                   padx=(0, 12), pady=4)
-        entry(form, self.ble_name, f, width=16).grid(row=0, column=1, sticky="we", pady=4, ipady=5)
+        RoundField(form, lambda p: entry(p, self.ble_name, f, width=16), pady=8).grid(row=0, column=1, sticky="we",
+                                                                                    pady=4)
         default = core.PROFILES["ble"]["default_name"][self.brand]
         tk.Label(form, text=f"empty = {default}", bg=PANEL, fg=MUT, font=f.mono_s).grid(row=1, column=1, sticky="w")
         fw = core.PROFILES["ble"]["models"][self.brand][self.ble_key()]["fw"]
@@ -1375,10 +1700,11 @@ class App(tk.Tk):
         crow.pack(anchor="w")
         RadioCard(crow, self, "Custom character", None, "custom", self.target, self._focus_custom, width=200,
                   height=40).pack(side="left")
-        self.custom_entry = tk.Entry(crow, textvariable=self.custom, width=3, bg=BG, fg=TXT, insertbackground=TXT,
-                                     relief="flat", font=self.f.mono_l, justify="center", highlightthickness=1,
-                                     highlightbackground=LINE2, highlightcolor=T.ACCENT)
-        self.custom_entry.pack(side="left", padx=8, ipady=1)
+        cf = RoundField(crow, lambda p: tk.Entry(p, textvariable=self.custom, width=2, bg=BG, fg=TXT,
+                                                  insertbackground=T.ACCENT, relief="flat", bd=0, font=self.f.mono_l,
+                                                  justify="center", highlightthickness=0), padx=10, pady=5)
+        cf.pack(side="left", padx=8)
+        self.custom_entry = cf.child
         tk.Label(crow, text="only if you\nknow the value", bg=PANEL, fg=MUT, font=self.f.mono_s,
                  justify="left").pack(side="left")
         self.custom_entry.bind("<KeyRelease>", self._custom_typed)
@@ -1407,11 +1733,13 @@ class App(tk.Tk):
         Link(head, "refresh", self.render, self.f, PANEL, font=self.f.mono_s).pack(side="right")
         Link(head, "open", lambda: open_path(ensure_dir(e3tool.backups_dir())), self.f, PANEL,
              font=self.f.mono_s).pack(side="right", padx=10)
-        lb = tk.Listbox(box, bg=BG, fg=TXT, selectbackground=T.ACCENT_BG, selectforeground=TXT, font=self.f.mono_s,
-                        height=min(5, max(3, len(files))), relief="flat", highlightthickness=1,
-                        highlightbackground=LINE2, highlightcolor=LINE2, activestyle="none", bd=0,
-                        exportselection=False)
-        lb.pack(fill="x", pady=(6, 0))
+        field = RoundField(box, lambda p: tk.Listbox(p, bg=BG, fg=TXT, selectbackground=T.ACCENT_BG,
+                                                     selectforeground=TXT, font=self.f.mono_s,
+                                                     height=min(5, max(3, len(files))), relief="flat",
+                                                     highlightthickness=0, activestyle="none", bd=0,
+                                                     exportselection=False), padx=8, pady=8)
+        field.pack(fill="x", pady=(6, 0))
+        lb = field.child
         for fpath in files:
             ts = time.strftime("%Y-%m-%d %H:%M", time.localtime(fpath.stat().st_mtime))
             lb.insert("end", f" {short(fpath.name, 36):<37} {ts}")
@@ -1513,12 +1841,50 @@ class App(tk.Tk):
         if self.action_id == "e3_change" and self.run_backup:
             Button(self.extra_row, "Restore the new backup…", self.goto_restore_run_backup, self.f, kind="ghost",
                    bg=PANEL, small=True, expand=True, height=34).pack(fill="x", pady=(8, 0))
+        if platform.system() == "Linux" and "no permission" in self.error:
+            Button(self.extra_row, "Set up ST-Link access…", self.setup_stlink_access, self.f, kind="ghost",
+                   bg=PANEL, small=True, expand=True, height=34).pack(fill="x", pady=(8, 0))
+
+    def setup_stlink_access(self):
+        """Linux: installs the udev rule that lets the logged-in user use the ST-Link (asks for the password with
+        pkexec). The rule is copied to the data folder first: root cannot read inside a mounted AppImage."""
+        rules = core.ROOT / "linux" / "99-stlink.rules"
+        target = "/etc/udev/rules.d/99-stlink.rules"
+        manual = (f"sudo cp \"{rules}\" {target}\nsudo udevadm control --reload-rules\nsudo udevadm trigger")
+        pk = shutil.which("pkexec")
+        if not rules.exists() or not pk:
+            Dialog.info(self, "ST-Link access", "Run these commands once in a terminal, then unplug the ST-Link and "
+                                                "plug it in again:", detail=manual)
+            return
+        tmp = ensure_dir(core.TEMP) / "99-stlink.rules"
+        tmp.write_bytes(rules.read_bytes())
+        script = f'install -m 644 "$1" {target} && udevadm control --reload-rules && udevadm trigger'
+
+        def work():
+            try:
+                r = subprocess.run([pk, "sh", "-c", script, "sh", str(tmp)], capture_output=True, text=True,
+                                   timeout=300)
+                self.q.put(("udev", (r.returncode, (r.stderr or "").strip())))
+            except Exception as e:  # noqa
+                self.q.put(("udev", (-1, str(e))))
+        self.console_line("Installing the ST-Link udev rule (password prompt) …", "msg")
+        threading.Thread(target=work, daemon=True).start()
+
+    def _udev_done(self, payload):
+        rc, err = payload
+        if rc == 0:
+            self.console_line(f"udev rule installed: /etc/udev/rules.d/99-stlink.rules", "ok")
+            Dialog.info(self, "ST-Link access", "Done. Unplug the ST-Link, plug it in again and try again.")
+        else:
+            self.console_line(f"udev rule not installed ({err or rc})", "warn")
+            Dialog.info(self, "ST-Link access", "Not installed (cancelled or no permission). You can also run "
+                                                "setup_linux.sh, or these commands in a terminal:",
+                        detail=f"sudo cp linux/99-stlink.rules /etc/udev/rules.d/\nsudo udevadm control "
+                               f"--reload-rules\nsudo udevadm trigger")
 
     def _path_row(self, parent, path):
-        box = tk.Frame(parent, bg=BG, highlightthickness=1, highlightbackground=LINE2)
-        box.pack(fill="x", pady=(10, 0))
-        tk.Label(box, text=short(path, 56), bg=BG, fg=TXT, font=self.f.mono_s, anchor="w", padx=10, pady=6).pack(
-            fill="x")
+        RoundField(parent, lambda p: tk.Label(p, text=short(path, 56), bg=BG, fg=TXT, font=self.f.mono_s,
+                                              anchor="w")).pack(fill="x", pady=(10, 0))
         row = tk.Frame(parent, bg=PANEL)
         row.pack(fill="x", pady=(6, 0))
         Link(row, "open folder", lambda: open_path(pathlib.Path(path).parent), self.f, PANEL,
@@ -1535,13 +1901,13 @@ class App(tk.Tk):
                                      self.effective_chip())
         if path and path.suffix.lower() == ".png":
             try:
-                DiagramViewer(self, path, self.power_text(ble))
+                DiagramViewer(self, path, self.wiring_text(ble))
                 return
             except tk.TclError:
                 pass
         if path:
             open_path(path)
-        Dialog.info(self, "Wiring", self.power_text(ble))
+        Dialog.info(self, "Wiring", self.wiring_text(ble))
 
     # ---------------------------------------------------------------- start / countdown
     def start(self):
@@ -1742,6 +2108,8 @@ class App(tk.Tk):
                     self.step = payload
                     if self.stage == "running":
                         self._render_running_light()
+                elif kind == "udev":
+                    self._udev_done(payload)
                 elif kind == "version":
                     self.oocd_version = payload
                     self.update_status()
@@ -1979,9 +2347,13 @@ class App(tk.Tk):
 
 def main():
     if platform.system() == "Windows":
+        import ctypes
         try:
-            import ctypes
             ctypes.windll.shcore.SetProcessDpiAwareness(1)
+        except Exception:  # noqa
+            pass
+        try:  # own taskbar entry with our icon, instead of being grouped under python.exe
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("emilian04.TorqueFlasher")
         except Exception:  # noqa
             pass
     App().mainloop()

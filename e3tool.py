@@ -13,7 +13,6 @@ import pathlib
 
 import core
 
-DEFAULT_BACKUPS = core.ROOT / "e3_backups"
 _backups_dir: pathlib.Path | None = None   # set by the front end (Settings)
 
 FLASH_BASE, FLASH_SIZE = 0x08000000, 0x20000
@@ -31,7 +30,8 @@ def _noprogress(step, total, label):
 
 
 def backups_dir() -> pathlib.Path:
-    return _backups_dir or DEFAULT_BACKUPS
+    """The folder chosen in Settings, else e3_backups in the data folder."""
+    return _backups_dir or core.DATA / "e3_backups"
 
 
 def set_backups_dir(path):
@@ -78,8 +78,7 @@ def run(cmds, dry_run=False, log=print) -> str:
     text = "\n".join(out)
     err = core.connection_error(text)
     if err:
-        raise RuntimeError(err.replace(core.POWER_HINT.lower(),
-                                       "3.3 V from the ST-Link on the back pad, battery disconnected"))
+        raise RuntimeError(err)
     return text
 
 

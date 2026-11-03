@@ -14,4 +14,4 @@ else
 fi
 sudo cp linux/99-stlink.rules /etc/udev/rules.d/
 sudo udevadm control --reload-rules && sudo udevadm trigger
-echo "Done. Unplug and re-plug the ST-Link, then build the AT32 OpenOCD (./build_openocd_at32.sh) and run ./start.sh"
+echo "Done. Unplug and re-plug the ST-Link, then build the AT32 OpenOCD (bash build_openocd_at32.sh) and run bash start.sh"

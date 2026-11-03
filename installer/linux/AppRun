@@ -1,0 +1,4 @@
+#!/bin/sh
+# AppImage entry point: starts the bundled TorqueFlasher.
+HERE="$(dirname "$(readlink -f "$0")")"
+exec "$HERE/usr/lib/torqueflasher/TorqueFlasher" "$@"

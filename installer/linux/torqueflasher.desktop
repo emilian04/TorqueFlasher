@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=TorqueFlasher
+GenericName=Scooter controller flasher
+Comment=Flash Ninebot and Xiaomi scooter controllers over an ST-Link
+Exec=TorqueFlasher
+Icon=torqueflasher
+Categories=Development;
+Terminal=false
+StartupWMClass=TorqueFlasher
