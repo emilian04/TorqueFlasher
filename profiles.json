@@ -461,10 +461,11 @@
      "default": "Ninebot/G30-DRV.png",
      "at32": "Ninebot/G30_AT32-DRV.png"
     },
-    "g2": "Ninebot/G2-F2-DRV.jpg",
-    "f2": "Ninebot/G2-F2-DRV.jpg",
-    "f2gd32": "Ninebot/G2-F2-DRV.jpg",
-    "e2pro": "Ninebot/G2-F2-DRV.jpg"
+    "g2": "Ninebot/G2-F2-DRV.png",
+    "f2": "Ninebot/G2-F2-DRV.png",
+    "f2gd32": "Ninebot/G2-F2-DRV.png",
+    "e2pro": "Ninebot/G2-F2-DRV.png",
+    "e3": "Ninebot/G2-F2-DRV.png"
    },
    "xiaomi": {
     "m365": "Xiaomi/M365_PRO-DRV.png",
@@ -483,7 +484,7 @@
     "g30": "Ninebot/G30-BLE.png"
    },
    "xiaomi": {
-    "pro": "Xiaomi/PRO-BLE.jpg",
+    "pro": "Xiaomi/PRO-BLE.png",
     "1s": "Xiaomi/LITE_1S_MI3_PRO2-BLE.png",
     "lite": "Xiaomi/LITE_1S_MI3_PRO2-BLE.png",
     "pro2": "Xiaomi/LITE_1S_MI3_PRO2-BLE.png",

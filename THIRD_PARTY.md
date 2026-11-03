@@ -5,7 +5,8 @@ covered by that license.
 
 ## ScooterHacking (ReFlasher)
 
-`binaries/` (bootloaders, firmware, UICR files) and `diagrams/` come from ScooterHacking's ReFlasher,
+`binaries/` (bootloaders, firmware, UICR files) and `diagrams/` (three JPG diagrams converted to PNG for
+display) come from ScooterHacking's ReFlasher,
 the F2 GD32 files `f2_gd32_BOOT.bin` / `f2_gd32_DRV.bin` from ScooterHacking as well.
 © ScooterHacking. Included with permission of ScooterHacking (confirmed 2026-11-02); do not reuse them
 outside this project without asking them.

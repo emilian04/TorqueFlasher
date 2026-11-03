@@ -86,15 +86,28 @@ def ensure_dir(p) -> pathlib.Path:
     return p
 
 
+def external_env() -> dict:
+    """Environment for system programs (xdg-open, xprop, pkexec). In the AppImage, PyInstaller points
+    LD_LIBRARY_PATH at its bundled libraries; system programs must get the original value back."""
+    env = dict(os.environ)
+    orig = env.pop("LD_LIBRARY_PATH_ORIG", None)
+    if orig is not None:
+        env["LD_LIBRARY_PATH"] = orig
+    elif getattr(__import__("sys"), "frozen", False):
+        env.pop("LD_LIBRARY_PATH", None)
+    return env
+
+
 def open_path(p):
     p = str(p)
     try:
         if platform.system() == "Windows":
             os.startfile(p)  # noqa
         elif platform.system() == "Darwin":
-            subprocess.Popen(["open", p])
+            subprocess.Popen(["open", p], env=external_env())
         else:
-            subprocess.Popen(["xdg-open", p], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            subprocess.Popen(["xdg-open", p], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                             env=external_env())
     except Exception:  # noqa
         pass
 
@@ -138,6 +151,7 @@ def dark_titlebar(win):
             def on_map(e):  # the native frame exists once the window is mapped
                 if e.widget is win and not getattr(win, "_tf_dark", False):
                     win._tf_dark = True
+                    apply_window_icon(win, default=win is win._root())
                     try:
                         _dwm_dark(win)
                     except Exception:  # noqa
@@ -148,7 +162,8 @@ def dark_titlebar(win):
         elif win.tk.call("tk", "windowingsystem") == "x11" and shutil.which("xprop"):
             # before the window is mapped, 'wm frame' is the toplevel window the window manager will decorate
             subprocess.Popen(["xprop", "-id", win.wm_frame(), "-f", "_GTK_THEME_VARIANT", "8u", "-set",
-                              "_GTK_THEME_VARIANT", "dark"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                              "_GTK_THEME_VARIANT", "dark"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                             env=external_env())
     except Exception:  # noqa - purely cosmetic
         pass
 
@@ -159,24 +174,40 @@ def icon_dir(assets: pathlib.Path, accent: str | None = None) -> pathlib.Path:
     return d if accent and (d / "icon-32.png").exists() else assets
 
 
+_ICON = {"imgs": [], "ico": None}  # the current app icon (PhotoImages must stay referenced)
+
+
 def set_window_icon(win, assets: pathlib.Path, accent: str | None = None):
-    """App icon for the window, the taskbar and all dialogs, in the accent color (icon-*.png; on Windows also
+    """App icon in the accent color for the window, the taskbar and all dialogs (icon-*.png; on Windows also
     icon.ico). The icon of the .exe / AppImage file itself is fixed when it is built."""
     d = icon_dir(assets, accent)
-    if platform.system() == "Windows" and (d / "icon.ico").exists():
+    try:
+        _ICON["imgs"] = [tk.PhotoImage(master=win, file=str(d / f"icon-{s}.png")) for s in (256, 64, 32, 16)
+                         if (d / f"icon-{s}.png").exists()]
+    except Exception:  # noqa
+        _ICON["imgs"] = []
+    _ICON["ico"] = d / "icon.ico" if (d / "icon.ico").exists() else None
+    apply_window_icon(win, default=True)
+    return bool(_ICON["imgs"])
+
+
+def apply_window_icon(win, default=False):
+    """Sets the app icon on one window; default=True also makes it the icon of all later windows. On Windows this
+    only works once the window has been shown (a hidden main window has no native frame yet), so dark_titlebar()
+    calls it again for every window when it appears."""
+    if platform.system() == "Windows" and _ICON["ico"]:
         try:  # classic .ico (BMP entries); the PNG icon below is set last and wins where both work
-            win.iconbitmap(default=str(d / "icon.ico"))
+            if default:
+                win.iconbitmap(default=str(_ICON["ico"]))
+            else:
+                win.iconbitmap(str(_ICON["ico"]))
         except Exception:  # noqa
             pass
-    try:
-        imgs = [tk.PhotoImage(master=win, file=str(d / f"icon-{s}.png")) for s in (256, 64, 32, 16)
-                if (d / f"icon-{s}.png").exists()]
-        if imgs:
-            win.iconphoto(True, *imgs)
-            win._icon_imgs = imgs
-        return bool(imgs)
-    except Exception:  # noqa
-        return False
+    if _ICON["imgs"]:
+        try:
+            win.iconphoto(default, *_ICON["imgs"])
+        except Exception:  # noqa
+            pass
 
 
 def bind_all_children(widget, seq, fn):

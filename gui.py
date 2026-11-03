@@ -809,6 +809,8 @@ class App(tk.Tk):
         """Main window visible (after the startup warning); on the very first start the scooter picker follows."""
         self.warning = None
         self.deiconify()
+        self.update_idletasks()
+        tf_ui.apply_window_icon(self, default=True)  # Windows: possible only now that the window is shown
         if self.first_run:
             self.after(400, self.open_picker)
 
@@ -1863,7 +1865,7 @@ class App(tk.Tk):
         def work():
             try:
                 r = subprocess.run([pk, "sh", "-c", script, "sh", str(tmp)], capture_output=True, text=True,
-                                   timeout=300)
+                                   timeout=300, env=tf_ui.external_env())
                 self.q.put(("udev", (r.returncode, (r.stderr or "").strip())))
             except Exception as e:  # noqa
                 self.q.put(("udev", (-1, str(e))))
@@ -1895,10 +1897,8 @@ class App(tk.Tk):
     def show_wiring(self):
         a = ALL_ACTIONS[self.action_id]
         ble = bool(a.get("ble"))
-        path = None
-        if not self.is_e3():
-            path = core.diagram_path("ble" if ble else "drv", self.brand, self.ble_key() if ble else self.model,
-                                     self.effective_chip())
+        path = core.diagram_path("ble" if ble else "drv", self.brand, self.ble_key() if ble else self.model,
+                                 self.effective_chip())
         if path and path.suffix.lower() == ".png":
             try:
                 DiagramViewer(self, path, self.wiring_text(ble))

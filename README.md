@@ -154,6 +154,12 @@ Existing OpenOCD binaries can be used with `TORQUEFLASHER_OPENOCD` and `TORQUEFL
 
 ## Changes
 
+**0.5.1 beta**
+- Wiring diagrams for G2, F2, E2 Pro, G30D and the Xiaomi Pro BLE are shown in the app on Linux too (converted
+  from JPG to PNG, pixel-identical). The E3 / E3 Pro shows the G2/F2 diagram (same wiring).
+- Windows: app icon in the title bar and the taskbar (it was lost while the startup warning was open).
+- AppImage: opening folders and the ST-Link password prompt use the system libraries.
+
 **0.5.0 beta**
 - Installers: Windows setup wizard (install folder, data folder, shortcuts) and a Linux AppImage with Python,
   Tk and both OpenOCD builds inside.

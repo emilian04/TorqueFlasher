@@ -24,7 +24,7 @@ from pathlib import Path
 from typing import Callable
 
 APP_NAME = "TorqueFlasher"
-APP_VERSION = "0.5.0"
+APP_VERSION = "0.5.1"
 APP_STAGE = "BETA"
 REPO_URL = "https://github.com/emilian04/TorqueFlasher"
 TEST_REPORT_URL = REPO_URL + "/issues/new?template=test-report.yml"
